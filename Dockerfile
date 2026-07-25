@@ -16,7 +16,6 @@ COPY src ./src
 COPY public ./public
 COPY server ./server
 
-# prisma generate needs a URL shape; no live DB required at build time
 ENV DATABASE_URL="postgresql://mandate:mandate@127.0.0.1:5432/mandate"
 RUN npx prisma generate \
   && npm run build \
@@ -44,16 +43,13 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY prisma ./prisma
-COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY scripts/start.mjs ./scripts/start.mjs
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-RUN chmod +x /app/docker-entrypoint.sh \
-  && npx prisma generate
+RUN npx prisma generate
 
 EXPOSE 8788
-
-# Railway uses its own network healthcheck against $PORT — don't pin Docker HEALTHCHECK to 8788.
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["node", "scripts/start.mjs"]
