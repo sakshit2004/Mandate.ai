@@ -426,6 +426,9 @@ function App() {
             </a>
           </div>
           <div className="nav-actions">
+            <a className="text-link" href="/login">
+              sign in
+            </a>
             <a className="button button-small" href="#invite">
               join the beta
             </a>

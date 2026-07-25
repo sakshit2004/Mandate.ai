@@ -1,0 +1,60 @@
+# Local Postgres (+ optional Mailpit) for Mandate development / prod-parity.
+# App still runs on the host: npm run dev
+#
+#   docker compose up -d postgres
+#   npx prisma migrate deploy
+#   npm run dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mandate
+      POSTGRES_PASSWORD: mandate
+      POSTGRES_DB: mandate
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mandate -d mandate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    profiles: ["mail"]
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+  # Optional: run the production image locally
+  #   docker compose --profile app up --build
+  app:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8788:8788"
+    environment:
+      NODE_ENV: production
+      PORT: "8788"
+      DATABASE_URL: postgresql://mandate:mandate@postgres:5432/mandate
+      SESSION_SECRET: ${SESSION_SECRET:-mandate-session-secret-change-me-now}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8788}
+      AGENCY_NAME: ${AGENCY_NAME:-Fieldnote Automation}
+      AGENCY_TIMEZONE: ${AGENCY_TIMEZONE:-America/Denver}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-ops@example.com}
+      STANDALONE: "1"
+      EMAIL_CONSOLE: "1"
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_FROM: Mandate <alerts@mandate.local>
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

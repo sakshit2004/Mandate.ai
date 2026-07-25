@@ -1,0 +1,60 @@
+# Mandate production image — UI + API on one port
+# syntax=docker/dockerfile:1
+
+FROM node:22-bookworm-slim AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts index.html ./
+COPY src ./src
+COPY public ./public
+COPY server ./server
+
+# prisma generate needs a URL shape; no live DB required at build time
+ENV DATABASE_URL="postgresql://mandate:mandate@127.0.0.1:5432/mandate"
+RUN npx prisma generate \
+  && npm run build \
+  && npx tsc -p server/tsconfig.json
+
+FROM node:22-bookworm-slim AS runner
+WORKDIR /app
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    chromium \
+    ca-certificates \
+    fonts-liberation \
+    curl \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV NODE_ENV=production \
+  PORT=8788 \
+  STANDALONE=1 \
+  EMAIL_CONSOLE=0 \
+  PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+  PUPPETEER_SKIP_DOWNLOAD=true
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY prisma ./prisma
+COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/server/dist ./server/dist
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
+
+RUN chmod +x /app/docker-entrypoint.sh \
+  && npx prisma generate
+
+EXPOSE 8788
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8788/api/health || exit 1
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

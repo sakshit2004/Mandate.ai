@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BudgetPeriod {
+  daily
+  weekly
+  monthly
+}
+
+model Agency {
+  id                  String    @id @default(cuid())
+  name                String
+  timezone            String    @default("America/Denver")
+  adminEmail          String    @unique
+  passwordHash        String
+  setupComplete       Boolean   @default(false)
+  openaiConfigured    Boolean   @default(false)
+  anthropicConfigured Boolean   @default(false)
+  /// AES-GCM sealed provider keys (standalone mode — no LiteLLM).
+  sealedOpenaiKey     String?
+  sealedAnthropicKey  String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  clients             Client[]
+  sessions            Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  agencyId  String
+  agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([agencyId])
+}
+
+model Client {
+  id           String       @id @default(cuid())
+  agencyId     String
+  agency       Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  name         String
+  slug         String
+  /// SHA-256 of the Mandate virtual key.
+  tokenHash    String       @unique
+  keyAlias     String       @unique
+  keyPrefix    String
+  /// AES-256-GCM sealed Mandate key for kill/re-enable after restarts.
+  sealedKey    String
+  maxBudgetUsd Float
+  budgetPeriod BudgetPeriod @default(monthly)
+  killed       Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  alerts       BudgetAlert[]
+  usageEvents  UsageEvent[]
+
+  @@unique([agencyId, slug])
+  @@index([agencyId])
+}
+
+model UsageEvent {
+  id        String   @id @default(cuid())
+  requestId String   @unique
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ts        DateTime @default(now())
+  provider  String
+  model     String
+  tokensIn  Int      @default(0)
+  tokensOut Int      @default(0)
+  costUsd   Float    @default(0)
+  status    String   @default("success")
+  tag       String?
+  createdAt DateTime @default(now())
+
+  @@index([clientId, ts])
+  @@index([ts])
+}
+
+model BudgetAlert {
+  id             String   @id @default(cuid())
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  thresholdPct   Int      @default(80)
+  budgetWindowId String
+  spendUsd       Float
+  capUsd         Float
+  emailedAt      DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@unique([clientId, thresholdPct, budgetWindowId])
+  @@index([clientId])
+}

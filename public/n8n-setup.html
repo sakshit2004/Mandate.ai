@@ -57,11 +57,12 @@
           <li>Set the provider-specific base URL below and save the credential.</li>
         </ol>
         <h3>OpenAI</h3>
-        <pre>Base URL   https://api.mandate.dev/openai/v1
-API key    mdt_live_your_client_key</pre>
+        <pre>Base URL   http://localhost:3001/openai/v1
+API key    &lt;Mandate client key from /app&gt;</pre>
         <h3>Anthropic</h3>
-        <pre>Base URL   https://api.mandate.dev/anthropic/v1
-API key    mdt_live_your_client_key</pre>
+        <pre>Base URL   http://localhost:3001/anthropic/v1
+API key    &lt;same Mandate client key&gt;</pre>
+        <p>Optional: set header <code>X-Mandate-Tag</code> to attribute spend (for example <code>intake-sync</code>). Production hosts replace <code>localhost:3001</code> with your Mandate URL.</p>
         <p>If your n8n node does not expose a base URL field, use the HTTP Request node with the same path, headers, and request body you send to the provider.</p>
       </section>
 
@@ -79,8 +80,8 @@ API key    mdt_live_your_client_key</pre>
       <section>
         <h2>3. Handle spend-control responses</h2>
         <div class="response">
-          <div><b>429 · CLIENT_CAP_REACHED</b><span>The client has reached its dollar cap. Do not retry automatically.</span></div>
-          <div><b>403 · CLIENT_KEY_DISABLED</b><span>The agency used the kill switch. Stop the branch until the key is re-enabled.</span></div>
+          <div><b>429 · CLIENT_BUDGET_EXCEEDED</b><span>The client has reached its dollar cap. Do not retry automatically.</span></div>
+          <div><b>403 · CLIENT_KEY_KILLED</b><span>The agency used the kill switch. Stop the branch until the key is re-enabled.</span></div>
         </div>
         <p>In n8n, route these statuses to a controlled stop or notification branch. Retrying a blocked request will not reach the provider.</p>
       </section>

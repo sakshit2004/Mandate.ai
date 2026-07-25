@@ -1,30 +1,68 @@
 # Mandate
 
-The web app for Mandate, built with React, TypeScript, and Vite.
+Spend control for agencies running AI agents on client work.
 
-## Development
+## Local
 
+You need a Postgres database (same as production).
+
+**Option A — Docker Desktop**
+```bash
+docker compose up -d postgres
+```
+
+**Option B — no Docker (Neon free)**  
+Create a free DB at [neon.tech](https://neon.tech), copy the connection string into `.env` as `DATABASE_URL`.
+
+Then:
 ```bash
 npm install
+npx prisma migrate deploy
 npm run dev
 ```
 
-Create a production build with `npm run build`.
+Open **http://localhost:8788** → `/setup` → `/app`
 
-## Waitlist endpoint
+| Provider  | Base URL |
+|-----------|----------|
+| OpenAI    | `http://localhost:8788/openai/v1` |
+| Anthropic | `http://localhost:8788/anthropic/v1` |
 
-Copy `.env.example` to `.env.local` and set `VITE_WAITLIST_ENDPOINT` to a form or API endpoint that accepts:
+## Deploy on Railway (easiest)
 
-```json
-{
-  "email": "you@youragency.com",
-  "source": "mandate-landing"
-}
+1. Push this repo to GitHub.
+2. [railway.app/new](https://railway.app/new) → **Deploy from GitHub repo**.
+3. Add **PostgreSQL** → Railway injects `DATABASE_URL`.
+4. Set:
+
+| Variable | Value |
+|----------|--------|
+| `SESSION_SECRET` | long random string (32+ chars) |
+| `STANDALONE` | `1` |
+| `AGENCY_NAME` | your agency name |
+| `ALERT_EMAIL_TO` | optional ops email |
+
+5. Generate a public domain on the service.  
+   `PUBLIC_BASE_URL` is auto-detected from `RAILWAY_PUBLIC_DOMAIN`.
+6. Open `https://YOUR-APP.up.railway.app/setup`.
+
+**n8n OpenAI base URL:** `https://YOUR-APP.up.railway.app/openai/v1`
+
+`Dockerfile` + `railway.toml` handle build, migrate-on-boot, and `/api/health`.
+
+## Deploy on Render
+
+1. New **Blueprint** → this repo (`render.yaml`).
+2. Set `SESSION_SECRET`.
+3. Use the Render URL the same way as Railway above.
+
+## Production image locally
+
+```bash
+docker compose --profile app up --build
 ```
 
-The landing page reports an error instead of claiming success when the endpoint is missing or rejects the request.
+## Notes
 
-## Launch artifacts
-
-- n8n setup guide: `/n8n-setup.html`
-- 30-second looping demo: `/mandate-n8n-demo.gif`
+- Dev emails log to the console (`EMAIL_CONSOLE=1`). Production uses SMTP unless you set `EMAIL_CONSOLE=1`.
+- Optional LiteLLM stack: `docker compose -f docker-compose.litellm.yml up` (not needed for standalone).

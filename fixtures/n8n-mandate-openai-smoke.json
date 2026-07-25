@@ -1,0 +1,35 @@
+{
+  "name": "Mandate smoke — OpenAI via Mandate",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.MANDATE_BASE_URL}}/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Authorization", "value": "=Bearer {{$env.MANDATE_CLIENT_KEY}}" },
+            { "name": "X-Mandate-Tag", "value": "n8n-smoke" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [{ \"role\": \"user\", \"content\": \"Say hi in three words.\" }],\n  \"max_tokens\": 20\n}"
+      },
+      "id": "mandate-openai-smoke",
+      "name": "Mandate OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [0, 0]
+    }
+  ],
+  "connections": {},
+  "settings": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "notes": "Only change base URL / key vs calling OpenAI directly. Set MANDATE_BASE_URL (e.g. http://localhost:3001) and MANDATE_CLIENT_KEY."
+  }
+}

@@ -1,0 +1,25 @@
+model_list:
+  # Wildcard routes so bare provider model names work after Mandate prefixes them.
+  - model_name: "openai/*"
+    litellm_params:
+      model: "openai/*"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "anthropic/*"
+    litellm_params:
+      model: "anthropic/*"
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+  # Map X-Mandate-Tag (forwarded by Mandate ingress) into spend request_tags.
+  extra_spend_tag_headers:
+    - "x-mandate-tag"
+  disable_add_user_agent_to_request_tags: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+  # Metering metadata only — do not persist prompts/responses.
+  store_prompts_in_spend_logs: false

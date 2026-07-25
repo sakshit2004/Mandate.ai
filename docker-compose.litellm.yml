@@ -1,0 +1,55 @@
+# Optional LiteLLM + Redis stack (not required for standalone Mandate).
+# Prefer docker-compose.yml + STANDALONE=1 for normal use.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mandate
+      POSTGRES_PASSWORD: mandate
+      POSTGRES_DB: mandate
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_litellm_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mandate -d mandate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.83.0-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    environment:
+      DATABASE_URL: postgresql://mandate:mandate@postgres:5432/mandate
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-mandate-master-change-me}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-mandate-salt-key-change-me-now}
+      STORE_MODEL_IN_DB: "True"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./infra/litellm/config.yaml:/app/config.yaml:ro
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  postgres_litellm_data:

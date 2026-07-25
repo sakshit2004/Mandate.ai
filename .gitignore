@@ -1,5 +1,6 @@
 node_modules/
 dist/
+server/dist/
 .env
 .env.local
 .env.*.local
@@ -7,3 +8,10 @@ dist/
 vite.config.js
 vite.config.d.ts
 .DS_Store
+prisma/*.db
+prisma/*.db-journal
+dev.db
+dev.db-journal
+coverage/
+test-results/
+playwright-report/

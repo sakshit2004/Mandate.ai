@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: mandate
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: STANDALONE
+        value: "1"
+      - key: EMAIL_CONSOLE
+        value: "0"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mandate-db
+          property: connectionString
+      - key: AGENCY_NAME
+        value: Mandate Agency
+      - key: AGENCY_TIMEZONE
+        value: America/Denver
+
+databases:
+  - name: mandate-db
+    plan: free
+    postgresMajorVersion: "16"

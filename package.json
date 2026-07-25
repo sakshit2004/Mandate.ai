@@ -4,20 +4,54 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "dev": "tsx watch server/src/dev.ts",
+    "dev:api": "tsx watch server/src/dev.ts",
+    "dev:vite": "vite",
+    "worker": "tsx watch server/src/workers/budget-alerts.ts",
+    "build": "tsc -b && vite build && tsc -p server/tsconfig.json",
+    "preview": "vite preview",
+    "start": "node server/dist/index.js",
+    "start:api": "node server/dist/index.js",
+    "start:prod": "prisma migrate deploy && node server/dist/index.js",
+    "start:worker": "node server/dist/workers/budget-alerts.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "docker:up": "docker compose up -d postgres",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.0.1",
+    "@fastify/middie": "^9.3.3",
+    "@fastify/static": "^8.2.0",
+    "@prisma/client": "^6.14.0",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.1",
+    "fastify": "^5.4.0",
     "lucide-react": "^1.25.0",
+    "nodemailer": "^7.0.5",
+    "puppeteer": "^24.16.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.8.0",
+    "zod": "^4.0.17",
+    "prisma": "^6.14.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^24.2.1",
+    "@types/nodemailer": "^6.4.17",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^9.2.0",
+    "tsx": "^4.20.3",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vitest": "^3.2.4"
   }
 }
