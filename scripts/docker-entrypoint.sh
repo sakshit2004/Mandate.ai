@@ -8,7 +8,7 @@ echo "  DATABASE_URL=${DATABASE_URL:+set}"
 echo "  SESSION_SECRET=${SESSION_SECRET:+set}"
 
 if [ -z "${DATABASE_URL:-}" ]; then
-  echo "FATAL: DATABASE_URL is not set. Add a Postgres plugin and link it to this service."
+  echo "FATAL: DATABASE_URL is not set. Add a Postgres plugin and link DATABASE_URL to this service."
   exit 1
 fi
 
@@ -17,17 +17,23 @@ if [ -z "${SESSION_SECRET:-}" ] || [ "${#SESSION_SECRET}" -lt 16 ]; then
   exit 1
 fi
 
+# Ensure Railway (and friends) always have a bindable PORT
+export PORT="${PORT:-8788}"
+
 echo "→ Running Prisma migrations (retrying until Postgres is ready)…"
 i=0
 until npx prisma migrate deploy; do
   i=$((i + 1))
   if [ "$i" -ge 30 ]; then
     echo "FATAL: prisma migrate deploy failed after 30 attempts."
+    echo "       Check DATABASE_URL points at the Railway Postgres plugin."
     exit 1
   fi
   echo "  waiting for database… ($i/30)"
   sleep 2
 done
 
-echo "→ Starting Mandate on 0.0.0.0:${PORT:-8788}"
+echo "→ Starting Mandate on 0.0.0.0:${PORT}"
+# Force unbuffered logs so Railway shows startup immediately
+export NODE_OPTIONS="${NODE_OPTIONS:-} --trace-uncaught"
 exec node server/dist/index.js

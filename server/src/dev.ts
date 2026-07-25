@@ -5,7 +5,7 @@
 import 'dotenv/config'
 import middie from '@fastify/middie'
 import { createServer as createViteServer } from 'vite'
-import { buildApp } from './index.js'
+import { buildApp } from './app.js'
 
 const PORT = Number(process.env.PORT || 8788)
 

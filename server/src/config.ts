@@ -1,6 +1,11 @@
 import 'dotenv/config'
 import { z } from 'zod'
 
+function emptyToUndefined(v: unknown): unknown {
+  if (v === '' || v === null) return undefined
+  return v
+}
+
 function resolvePublicBaseUrl(explicit?: string): string {
   const cleaned = explicit?.replace(/\/$/, '')
   if (cleaned) return cleaned
@@ -15,31 +20,39 @@ function resolvePublicBaseUrl(explicit?: string): string {
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().default(8788),
+  PORT: z.preprocess(emptyToUndefined, z.coerce.number().default(8788)),
   DATABASE_URL: z.string().min(1),
   SESSION_SECRET: z.string().min(16),
-  PUBLIC_BASE_URL: z.string().optional(),
-  AGENCY_NAME: z.string().default('Mandate Agency'),
-  AGENCY_TIMEZONE: z.string().default('America/Denver'),
-  ALERT_EMAIL_TO: z.string().email().optional(),
-  /** When true (default), Mandate proxies providers itself — no Docker/LiteLLM. */
+  PUBLIC_BASE_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  AGENCY_NAME: z.preprocess(emptyToUndefined, z.string().default('Mandate Agency')),
+  AGENCY_TIMEZONE: z.preprocess(emptyToUndefined, z.string().default('America/Denver')),
+  ALERT_EMAIL_TO: z.preprocess(emptyToUndefined, z.string().email().optional()),
   STANDALONE: z
     .string()
     .optional()
     .transform((v) => v !== '0' && v !== 'false'),
-  LITELLM_BASE_URL: z.string().url().optional(),
-  LITELLM_MASTER_KEY: z.string().min(8).optional(),
-  SMTP_HOST: z.string().default('localhost'),
-  SMTP_PORT: z.coerce.number().default(1025),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().default('Mandate <alerts@mandate.local>'),
-  /** Log budget emails to console instead of SMTP. Defaults on in non-production. */
-  EMAIL_CONSOLE: z.string().optional(),
-  PUPPETEER_EXECUTABLE_PATH: z.string().optional(),
+  LITELLM_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
+  LITELLM_MASTER_KEY: z.preprocess(emptyToUndefined, z.string().min(8).optional()),
+  SMTP_HOST: z.preprocess(emptyToUndefined, z.string().default('localhost')),
+  SMTP_PORT: z.preprocess(emptyToUndefined, z.coerce.number().default(1025)),
+  SMTP_USER: z.preprocess(emptyToUndefined, z.string().optional()),
+  SMTP_PASS: z.preprocess(emptyToUndefined, z.string().optional()),
+  SMTP_FROM: z.preprocess(
+    emptyToUndefined,
+    z.string().default('Mandate <alerts@mandate.local>'),
+  ),
+  EMAIL_CONSOLE: z.preprocess(emptyToUndefined, z.string().optional()),
+  PUPPETEER_EXECUTABLE_PATH: z.preprocess(emptyToUndefined, z.string().optional()),
 })
 
-const parsed = envSchema.parse(process.env)
+let parsed: z.infer<typeof envSchema>
+try {
+  parsed = envSchema.parse(process.env)
+} catch (err) {
+  console.error('[mandate] invalid environment configuration:')
+  console.error(err)
+  process.exit(1)
+}
 
 const emailConsoleExplicit =
   parsed.EMAIL_CONSOLE === '1' || parsed.EMAIL_CONSOLE === 'true'
