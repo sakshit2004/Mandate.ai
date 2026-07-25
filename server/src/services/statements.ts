@@ -1,4 +1,3 @@
-import puppeteer from 'puppeteer'
 import { env } from '../config.js'
 import type { BreakdownRow } from './usage.js'
 import { formatUsd, moneyUsd, sumUsd } from '../utils/money.js'
@@ -145,8 +144,9 @@ function csvEscape(value: string): string {
 }
 
 export async function renderStatementPdf(data: StatementData): Promise<Buffer> {
+  const puppeteer = await import('puppeteer')
   const html = buildStatementHtml(data)
-  const browser = await puppeteer.launch({
+  const browser = await puppeteer.default.launch({
     headless: true,
     executablePath: env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],

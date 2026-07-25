@@ -4,7 +4,7 @@ import cors from '@fastify/cors'
 import cookie from '@fastify/cookie'
 import fastifyStatic from '@fastify/static'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import fs from 'node:fs'
 import { env } from './config.js'
 import { registerAuthRoutes } from './routes/auth.js'
@@ -20,8 +20,16 @@ export async function buildApp(opts: { withStatic?: boolean } = {}) {
   const app = Fastify({
     logger: true,
     bodyLimit: 25 * 1024 * 1024,
-    trustProxy: env.NODE_ENV === 'production',
+    trustProxy: true,
   })
+
+  // Register first so static/SPA fallback can never shadow it (Railway healthcheck).
+  app.get('/health', async () => ({ ok: true }))
+  app.get('/api/health', async () => ({
+    ok: true,
+    standalone: env.STANDALONE,
+    port: env.PORT,
+  }))
 
   await app.register(cors, {
     origin: true,
@@ -66,13 +74,15 @@ export async function buildApp(opts: { withStatic?: boolean } = {}) {
     if (fs.existsSync(distDir)) {
       await app.register(fastifyStatic, {
         root: distDir,
-        prefix: '/',
+        // Do not register a catch-all that races API routes.
+        wildcard: false,
       })
       app.setNotFoundHandler((req, reply) => {
         if (
           req.url.startsWith('/api/') ||
           req.url.startsWith('/openai/') ||
-          req.url.startsWith('/anthropic/')
+          req.url.startsWith('/anthropic/') ||
+          req.url.startsWith('/health')
         ) {
           return reply.code(404).send({ error: { message: 'Not found' } })
         }
@@ -85,16 +95,17 @@ export async function buildApp(opts: { withStatic?: boolean } = {}) {
 }
 
 async function main() {
+  const port = Number(process.env.PORT || env.PORT || 8788)
   const app = await buildApp()
-  await app.listen({ port: env.PORT, host: '0.0.0.0' })
-  app.log.info(`Mandate on :${env.PORT}`)
+  await app.listen({ port, host: '0.0.0.0' })
+  app.log.info(`Mandate listening on 0.0.0.0:${port}`)
 }
 
-const isDirect =
-  process.argv[1]?.includes('index.ts') || process.argv[1]?.includes('index.js')
-if (isDirect) {
+const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : ''
+if (import.meta.url === entry) {
   main().catch((err) => {
     console.error(err)
     process.exit(1)
   })
 }
+

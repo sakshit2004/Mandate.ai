@@ -32,12 +32,12 @@ Open **http://localhost:8788** → `/setup` → `/app`
 
 1. Push this repo to GitHub.
 2. [railway.app/new](https://railway.app/new) → **Deploy from GitHub repo**.
-3. Add **PostgreSQL** → Railway injects `DATABASE_URL`.
-4. Set:
+3. Add **PostgreSQL** → click the web service → **Variables** → **Add reference** → `DATABASE_URL` from Postgres.
+4. Set these on the **web service**:
 
 | Variable | Value |
 |----------|--------|
-| `SESSION_SECRET` | long random string (32+ chars) |
+| `SESSION_SECRET` | long random string (32+ chars) — **required** |
 | `STANDALONE` | `1` |
 | `AGENCY_NAME` | your agency name |
 | `ALERT_EMAIL_TO` | optional ops email |
@@ -46,9 +46,11 @@ Open **http://localhost:8788** → `/setup` → `/app`
    `PUBLIC_BASE_URL` is auto-detected from `RAILWAY_PUBLIC_DOMAIN`.
 6. Open `https://YOUR-APP.up.railway.app/setup`.
 
+If deploy fails on **Network › Healthcheck**, open **Deploy Logs** and look for `FATAL:` — almost always missing `SESSION_SECRET` or unlinked `DATABASE_URL`.
+
 **n8n OpenAI base URL:** `https://YOUR-APP.up.railway.app/openai/v1`
 
-`Dockerfile` + `railway.toml` handle build, migrate-on-boot, and `/api/health`.
+`Dockerfile` + `railway.toml` handle build, migrate-on-boot, and health at `/health`.
 
 ## Deploy on Render
 

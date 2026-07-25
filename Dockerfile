@@ -54,7 +54,6 @@ RUN chmod +x /app/docker-entrypoint.sh \
   && npx prisma generate
 
 EXPOSE 8788
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:8788/api/health || exit 1
 
+# Railway uses its own network healthcheck against $PORT — don't pin Docker HEALTHCHECK to 8788.
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

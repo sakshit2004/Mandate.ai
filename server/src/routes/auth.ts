@@ -9,7 +9,7 @@ import {
   requireAuth,
   verifyPassword,
 } from '../services/auth.js'
-import { litellmHealth, storeProviderKeys } from '../services/litellm.js'
+import { storeProviderKeys } from '../services/litellm.js'
 import { mandateErrorBody } from '../utils/errors.js'
 
 const setupSchema = z.object({
@@ -27,11 +27,6 @@ const loginSchema = z.object({
 })
 
 export async function registerAuthRoutes(app: FastifyInstance) {
-  app.get('/api/health', async () => {
-    const gateway = await litellmHealth()
-    return { ok: true, standalone: env.STANDALONE, gateway }
-  })
-
   app.get('/api/bootstrap', async () => {
     const count = await prisma.agency.count()
     return {
