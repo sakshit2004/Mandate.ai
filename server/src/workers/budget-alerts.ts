@@ -8,13 +8,22 @@ import { periodBounds } from '../utils/periods.js'
 
 export async function runBudgetAlertPass(): Promise<{ checked: number; sent: number }> {
   const agencies = await prisma.agency.findMany({
-    include: { clients: true },
+    where: { status: 'ACTIVE' },
+    include: {
+      clients: true,
+      memberships: {
+        where: { role: 'ADMIN' },
+        include: { user: true },
+        take: 1,
+      },
+    },
   })
   let checked = 0
   let sent = 0
 
   for (const agency of agencies) {
-    const to = env.ALERT_EMAIL_TO || agency.adminEmail
+    const to = env.ALERT_EMAIL_TO || agency.memberships[0]?.user.primaryEmail
+    if (!to) continue
     for (const client of agency.clients) {
       if (client.killed) continue
       checked += 1

@@ -4,7 +4,11 @@ import { Readable } from 'node:stream'
 import { env } from '../config.js'
 import { prisma } from '../db.js'
 import { estimateCostUsd, getProviderKey, hashToken } from '../services/litellm.js'
-import { periodSpendForClient, recordUsageEvent } from '../services/usage.js'
+import {
+  recordUsageEvent,
+  releaseBudgetReservation,
+  reserveClientBudget,
+} from '../services/usage.js'
 import { mandateErrorBody, mapLiteLLMGateError } from '../utils/errors.js'
 import { moneyUsd } from '../utils/money.js'
 import { periodBounds } from '../utils/periods.js'
@@ -157,23 +161,16 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
           .code(401)
           .send(mandateErrorBody('INVALID_MANDATE_KEY', 'Unknown Mandate API key.'))
       }
+      if (client.agency.status === 'DISABLED') {
+        return reply
+          .code(403)
+          .send(mandateErrorBody('CLIENT_KEY_KILLED', 'This agency workspace is disabled.'))
+      }
       if (client.killed) {
         return reply.code(403).send(
           mandateErrorBody(
             'CLIENT_KEY_KILLED',
             `Client ${client.name} is killed. Re-enable the key in Mandate to resume.`,
-            { client: client.name },
-          ),
-        )
-      }
-
-      const period = periodBounds(client.budgetPeriod, client.agency.timezone)
-      const spent = await periodSpendForClient(client.id, period.start, period.end)
-      if (spent >= moneyUsd(client.maxBudgetUsd)) {
-        return reply.code(429).send(
-          mandateErrorBody(
-            'CLIENT_BUDGET_EXCEEDED',
-            `Client ${client.name} is over budget. Raise the cap or wait for the next period.`,
             { client: client.name },
           ),
         )
@@ -199,15 +196,45 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
         typeof reqJson?.model === 'string'
           ? String(stripProviderPrefix(reqJson.model))
           : 'unknown'
+      const period = periodBounds(client.budgetPeriod, client.agency.timezone)
+      const reservationId = randomUUID()
+      const estimatedInputTokens = Math.ceil((rawBody?.byteLength || 0) / 4)
+      const requestedOutputTokens = Number(
+        reqJson?.max_output_tokens ?? reqJson?.max_completion_tokens ?? reqJson?.max_tokens ?? 4096,
+      )
+      const estimatedCost = estimateCostUsd(
+        model,
+        estimatedInputTokens,
+        Number.isFinite(requestedOutputTokens) ? requestedOutputTokens : 4096,
+      )
+      const reserved = await reserveClientBudget({
+        reservationId,
+        clientId: client.id,
+        budgetWindowId: period.windowId,
+        start: period.start,
+        end: period.end,
+        capUsd: moneyUsd(client.maxBudgetUsd),
+        amountUsd: Math.max(0.01, estimatedCost * 1.25),
+      })
+      if (!reserved) {
+        return reply.code(429).send(
+          mandateErrorBody(
+            'CLIENT_BUDGET_EXCEEDED',
+            `Client ${client.name} is over budget. Raise the cap or wait for the next period.`,
+            { client: client.name },
+          ),
+        )
+      }
 
       const headers = new Headers()
       if (env.STANDALONE) {
         const providerKey = await getProviderKey(client.agencyId, provider)
         if (!providerKey) {
+          await releaseBudgetReservation(reservationId)
           return reply.code(502).send(
             mandateErrorBody(
               'UPSTREAM_ERROR',
-              `No ${provider} provider key configured. Add it in /setup.`,
+              `No ${provider} provider key configured. Add it in agency onboarding.`,
             ),
           )
         }
@@ -243,6 +270,7 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
           body: method === 'GET' || method === 'HEAD' ? undefined : body,
         })
       } catch (err) {
+        await releaseBudgetReservation(reservationId)
         request.log.error({ err }, 'upstream fetch failed')
         return reply
           .code(502)
@@ -263,6 +291,7 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
         }
         await recordUsageEvent({
           requestId,
+          reservationId,
           clientId: client.id,
           provider,
           model,
@@ -293,6 +322,7 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
         const costUsd = estimateCostUsd(model, tokensIn, tokensOut)
         await recordUsageEvent({
           requestId,
+          reservationId,
           clientId: client.id,
           provider,
           model,
@@ -316,6 +346,7 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
       const costUsd = estimateCostUsd(model, usage.tokensIn, usage.tokensOut)
       await recordUsageEvent({
         requestId,
+        reservationId,
         clientId: client.id,
         provider,
         model,
@@ -333,8 +364,9 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
     }
   }
 
-  app.all('/openai/v1/*', handler('openai'))
-  app.all('/openai/v1', handler('openai'))
-  app.all('/anthropic/v1/*', handler('anthropic'))
-  app.all('/anthropic/v1', handler('anthropic'))
+  const gatewayRate = { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } }
+  app.all('/openai/v1/*', gatewayRate, handler('openai'))
+  app.all('/openai/v1', gatewayRate, handler('openai'))
+  app.all('/anthropic/v1/*', gatewayRate, handler('anthropic'))
+  app.all('/anthropic/v1', gatewayRate, handler('anthropic'))
 }

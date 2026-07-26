@@ -171,6 +171,7 @@ export async function storeProviderKeys(input: {
       sealedAnthropicKey: input.anthropicApiKey ? sealSecret(input.anthropicApiKey) : undefined,
       openaiConfigured: input.openaiApiKey ? true : undefined,
       anthropicConfigured: input.anthropicApiKey ? true : undefined,
+      setupComplete: input.openaiApiKey || input.anthropicApiKey ? true : undefined,
     },
   })
 }

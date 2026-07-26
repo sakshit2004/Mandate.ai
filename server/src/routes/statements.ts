@@ -12,7 +12,7 @@ import { mandateErrorBody } from '../utils/errors.js'
 import { statementMonthBounds } from '../utils/periods.js'
 
 export async function registerStatementRoutes(app: FastifyInstance) {
-  app.get('/api/clients/:id/statement', async (request, reply) => {
+  app.get('/api/clients/:id/statement', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const agency = await requireAuth(request, reply)
     if (!agency) return
     const { id } = request.params as { id: string }

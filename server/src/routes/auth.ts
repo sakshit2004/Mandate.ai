@@ -1,131 +1,151 @@
 import type { FastifyInstance } from 'fastify'
+import { clerkClient } from '@clerk/fastify'
 import { z } from 'zod'
 import { env } from '../config.js'
 import { prisma } from '../db.js'
-import {
-  createSession,
-  destroySession,
-  hashPassword,
-  requireAuth,
-  verifyPassword,
-} from '../services/auth.js'
+import { clerkIdentity, recordAuditEvent, requireAdmin, requireAuth } from '../services/auth.js'
 import { storeProviderKeys } from '../services/litellm.js'
 import { mandateErrorBody } from '../utils/errors.js'
 
-const setupSchema = z.object({
-  agencyName: z.string().min(2).max(120),
-  adminEmail: z.string().email(),
-  password: z.string().min(8).max(200),
+const onboardingSchema = z.object({
   timezone: z.string().min(2).default('America/Denver'),
-  openaiApiKey: z.string().min(10).optional(),
-  anthropicApiKey: z.string().min(10).optional(),
 })
 
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-})
+function membershipRole(role: string | null | undefined): 'ADMIN' | 'MEMBER' {
+  return role === 'org:admin' || role === 'admin' ? 'ADMIN' : 'MEMBER'
+}
 
 export async function registerAuthRoutes(app: FastifyInstance) {
-  app.get('/api/bootstrap', async () => {
-    const count = await prisma.agency.count()
-    return {
-      needsSetup: count === 0,
-      agencyNameDefault: env.AGENCY_NAME,
-      standalone: env.STANDALONE,
-    }
-  })
+  app.get('/api/bootstrap', async () => ({
+    authProvider: 'clerk',
+    agencyNameDefault: env.AGENCY_NAME,
+    standalone: env.STANDALONE,
+  }))
 
-  app.post('/api/setup', async (request, reply) => {
-    const existing = await prisma.agency.count()
-    if (existing > 0) {
-      return reply
-        .code(400)
-        .send(mandateErrorBody('BAD_REQUEST', 'Setup already completed.'))
+  app.post('/api/onboarding/complete', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const identity = clerkIdentity(request)
+    if (!identity.userId) {
+      return reply.code(401).send(mandateErrorBody('UNAUTHORIZED', 'Sign in required.'))
     }
-    const parsed = setupSchema.safeParse(request.body)
+    if (!identity.organizationId) {
+      return reply
+        .code(409)
+        .send(mandateErrorBody('ORGANIZATION_REQUIRED', 'Create an agency workspace first.'))
+    }
+    if (identity.role !== 'ADMIN') {
+      return reply
+        .code(403)
+        .send(mandateErrorBody('FORBIDDEN', 'Only an organization admin can provision an agency.'))
+    }
+
+    const parsed = onboardingSchema.safeParse(request.body)
     if (!parsed.success) {
       return reply
         .code(400)
-        .send(mandateErrorBody('BAD_REQUEST', 'Invalid setup payload.', { issues: parsed.error.issues }))
-    }
-    const data = parsed.data
-    if (!data.openaiApiKey && !data.anthropicApiKey) {
-      return reply
-        .code(400)
-        .send(mandateErrorBody('BAD_REQUEST', 'Provide at least one provider API key.'))
+        .send(mandateErrorBody('BAD_REQUEST', 'Invalid onboarding payload.', { issues: parsed.error.issues }))
     }
 
-    const agency = await prisma.agency.create({
-      data: {
-        name: data.agencyName,
-        adminEmail: data.adminEmail.toLowerCase(),
-        passwordHash: await hashPassword(data.password),
-        timezone: data.timezone,
-        setupComplete: true,
-        openaiConfigured: Boolean(data.openaiApiKey),
-        anthropicConfigured: Boolean(data.anthropicApiKey),
-      },
+    const [organization, clerkUser] = await Promise.all([
+      clerkClient.organizations.getOrganization({ organizationId: identity.organizationId }),
+      clerkClient.users.getUser(identity.userId),
+    ])
+
+    const agency = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.upsert({
+        where: { clerkUserId: clerkUser.id },
+        create: {
+          clerkUserId: clerkUser.id,
+          primaryEmail: clerkUser.primaryEmailAddress?.emailAddress?.toLowerCase(),
+          name: clerkUser.fullName,
+          avatarUrl: clerkUser.imageUrl,
+        },
+        update: {
+          primaryEmail: clerkUser.primaryEmailAddress?.emailAddress?.toLowerCase(),
+          name: clerkUser.fullName,
+          avatarUrl: clerkUser.imageUrl,
+        },
+      })
+
+      let localAgency = await tx.agency.findUnique({
+        where: { clerkOrganizationId: organization.id },
+      })
+      if (localAgency) {
+        localAgency = await tx.agency.update({
+          where: { id: localAgency.id },
+          data: {
+            name: organization.name,
+            timezone: parsed.data.timezone,
+            status: 'ACTIVE',
+          },
+        })
+      }
+      if (!localAgency && env.CLERK_LEGACY_AGENCY_ID) {
+        const legacy = await tx.agency.findUnique({ where: { id: env.CLERK_LEGACY_AGENCY_ID } })
+        if (legacy && !legacy.clerkOrganizationId) {
+          localAgency = await tx.agency.update({
+            where: { id: legacy.id },
+            data: {
+              clerkOrganizationId: organization.id,
+              name: organization.name,
+              timezone: parsed.data.timezone,
+              status: 'ACTIVE',
+            },
+          })
+        }
+      }
+      if (!localAgency) {
+        localAgency = await tx.agency.create({
+          data: {
+            clerkOrganizationId: organization.id,
+            name: organization.name,
+            timezone: parsed.data.timezone,
+            status: 'ACTIVE',
+          },
+        })
+      }
+
+      await tx.agencyMembership.upsert({
+        where: { agencyId_userId: { agencyId: localAgency.id, userId: user.id } },
+        create: {
+          agencyId: localAgency.id,
+          userId: user.id,
+          role: membershipRole(identity.role),
+        },
+        update: { role: membershipRole(identity.role) },
+      })
+      return localAgency
     })
 
-    await storeProviderKeys({
-      agencyId: agency.id,
-      openaiApiKey: data.openaiApiKey,
-      anthropicApiKey: data.anthropicApiKey,
-    })
-
-    await createSession(agency.id, reply)
-    return {
-      agency: {
-        id: agency.id,
-        name: agency.name,
-        adminEmail: agency.adminEmail,
-        timezone: agency.timezone,
-        setupComplete: true,
-        openaiConfigured: Boolean(data.openaiApiKey),
-        anthropicConfigured: Boolean(data.anthropicApiKey),
-      },
-    }
-  })
-
-  app.post('/api/login', async (request, reply) => {
-    const parsed = loginSchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.code(400).send(mandateErrorBody('BAD_REQUEST', 'Invalid credentials payload.'))
-    }
-    const agency = await prisma.agency.findUnique({
-      where: { adminEmail: parsed.data.email.toLowerCase() },
-    })
-    if (!agency || !(await verifyPassword(parsed.data.password, agency.passwordHash))) {
-      return reply.code(401).send(mandateErrorBody('UNAUTHORIZED', 'Invalid email or password.'))
-    }
-    await createSession(agency.id, reply)
-    return {
-      agency: {
-        id: agency.id,
-        name: agency.name,
-        adminEmail: agency.adminEmail,
-        timezone: agency.timezone,
-        setupComplete: agency.setupComplete,
-        openaiConfigured: agency.openaiConfigured,
-        anthropicConfigured: agency.anthropicConfigured,
-      },
-    }
-  })
-
-  app.post('/api/logout', async (request, reply) => {
-    await destroySession(request, reply)
-    return { ok: true }
+    request.log.info(
+      { actorClerkUserId: identity.userId, clerkOrganizationId: organization.id, agencyId: agency.id },
+      'agency provisioned',
+    )
+    return { agency }
   })
 
   app.get('/api/me', async (request, reply) => {
     const agency = await requireAuth(request, reply)
     if (!agency) return
-    return { agency }
+    return {
+      agency: {
+        id: agency.id,
+        name: agency.name,
+        timezone: agency.timezone,
+        setupComplete: agency.setupComplete,
+        openaiConfigured: agency.openaiConfigured,
+        anthropicConfigured: agency.anthropicConfigured,
+        clerkOrganizationId: agency.clerkOrganizationId,
+      },
+      user: {
+        id: agency.actorClerkUserId,
+        role: agency.role,
+        permissions: agency.permissions,
+      },
+    }
   })
 
-  app.post('/api/providers', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+  app.post('/api/providers', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const agency = await requireAdmin(request, reply)
     if (!agency) return
     const body = z
       .object({
@@ -141,12 +161,15 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       openaiApiKey: body.data.openaiApiKey,
       anthropicApiKey: body.data.anthropicApiKey,
     })
+    await recordAuditEvent(agency, 'providers.updated', 'agency', agency.id, {
+      openai: Boolean(body.data.openaiApiKey),
+      anthropic: Boolean(body.data.anthropicApiKey),
+    })
     const updated = await prisma.agency.findUniqueOrThrow({ where: { id: agency.id } })
     return {
       agency: {
         id: updated.id,
         name: updated.name,
-        adminEmail: updated.adminEmail,
         timezone: updated.timezone,
         setupComplete: updated.setupComplete,
         openaiConfigured: updated.openaiConfigured,

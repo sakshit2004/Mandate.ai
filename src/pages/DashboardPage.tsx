@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link, Navigate, NavLink, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Download, Power, Plus, RefreshCw } from 'lucide-react'
+import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react'
 import { formatUsd, mandateApi, SpendRow, UsageLogRow } from '../api'
 import { useAgency } from './AuthPages'
 
@@ -13,8 +14,7 @@ function Logo() {
   )
 }
 
-function AppNav({ agencyName }: { agencyName: string }) {
-  const navigate = useNavigate()
+function AppNav({ agencyName, role }: { agencyName: string; role: 'ADMIN' | 'MEMBER' }) {
   return (
     <header className="app-header">
       <div className="app-header-left">
@@ -26,20 +26,20 @@ function AppNav({ agencyName }: { agencyName: string }) {
           <NavLink to="/app/ledger" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             ledger
           </NavLink>
+          <NavLink to="/app/team" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            team
+          </NavLink>
+          {role === 'ADMIN' && (
+            <NavLink to="/app/settings" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+              settings
+            </NavLink>
+          )}
         </nav>
       </div>
       <div className="app-header-meta">
         <span>{agencyName}</span>
-        <button
-          type="button"
-          className="button-ghost"
-          onClick={async () => {
-            await mandateApi.logout()
-            navigate('/login')
-          }}
-        >
-          sign out
-        </button>
+        <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/app" />
+        <UserButton afterSignOutUrl="/" />
       </div>
     </header>
   )
@@ -87,11 +87,11 @@ export function DashboardPage() {
   }, [agency])
 
   if (loading) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
-  if (!agency) return <Navigate to="/login" replace />
+  if (!agency) return <Navigate to="/onboarding" replace />
 
   return (
     <div className="app-shell">
-      <AppNav agencyName={agency.name} />
+      <AppNav agencyName={agency.name} role={agency.role} />
 
       <main className="app-main">
         <div className="app-title-row">
@@ -110,13 +110,21 @@ export function DashboardPage() {
             <button type="button" className="button-ghost" onClick={load}>
               <RefreshCw size={14} /> refresh
             </button>
-            <button type="button" onClick={() => setShowCreate(true)}>
-              <Plus size={14} /> new client key
-            </button>
+            {agency.role === 'ADMIN' && (
+              <button type="button" onClick={() => setShowCreate(true)}>
+                <Plus size={14} /> new client key
+              </button>
+            )}
           </div>
         </div>
 
         {error && <p className="form-error" role="alert">{error}</p>}
+        {!agency.setupComplete && agency.role === 'ADMIN' && (
+          <p className="form-error">
+            Connect an OpenAI or Anthropic key before sending gateway traffic.{' '}
+            <Link to="/onboarding">Finish onboarding →</Link>
+          </p>
+        )}
         {createdKey && (
           <div className="key-reveal" role="status">
             <strong>Copy this Mandate key now — it won’t be shown again.</strong>
@@ -236,14 +244,14 @@ export function LedgerPage() {
   }, [agency, clientId, status])
 
   if (loading) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
-  if (!agency) return <Navigate to="/login" replace />
+  if (!agency) return <Navigate to="/onboarding" replace />
 
   const pageEnd = Math.min(offset + logs.length, total)
   const totalCost = logs.reduce((sum, row) => sum + (row.status === 'error' ? 0 : row.cost_usd), 0)
 
   return (
     <div className="app-shell">
-      <AppNav agencyName={agency.name} />
+      <AppNav agencyName={agency.name} role={agency.role} />
       <main className="app-main ledger-main">
         <div className="app-title-row">
           <div>
@@ -514,7 +522,7 @@ export function ClientDetailPage() {
   }, [agency, id])
 
   if (loading) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
-  if (!agency) return <Navigate to="/login" replace />
+  if (!agency) return <Navigate to="/onboarding" replace />
 
   return (
     <div className="app-shell">
@@ -553,26 +561,28 @@ export function ClientDetailPage() {
                 <Link className="button-ghost" to={`/app/ledger?clientId=${row.id}`}>
                   full ledger
                 </Link>
-                <button
-                  type="button"
-                  className={row.killed ? '' : 'danger'}
-                  disabled={busyKill}
-                  onClick={async () => {
-                    if (!id) return
-                    setBusyKill(true)
-                    try {
-                      if (row.killed) await mandateApi.unkill(id)
-                      else await mandateApi.kill(id)
-                      await load()
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : 'Kill switch failed')
-                    } finally {
-                      setBusyKill(false)
-                    }
-                  }}
-                >
-                  <Power size={14} /> {row.killed ? 're-enable key' : 'kill client'}
-                </button>
+                {agency.role === 'ADMIN' && (
+                  <button
+                    type="button"
+                    className={row.killed ? '' : 'danger'}
+                    disabled={busyKill}
+                    onClick={async () => {
+                      if (!id) return
+                      setBusyKill(true)
+                      try {
+                        if (row.killed) await mandateApi.unkill(id)
+                        else await mandateApi.kill(id)
+                        await load()
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Kill switch failed')
+                      } finally {
+                        setBusyKill(false)
+                      }
+                    }}
+                  >
+                    <Power size={14} /> {row.killed ? 're-enable key' : 'kill client'}
+                  </button>
+                )}
               </div>
             </div>
 

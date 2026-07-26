@@ -1,13 +1,21 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || ''
 
+let authTokenProvider: (() => Promise<string | null>) | null = null
+
+export function configureAuthTokenProvider(provider: () => Promise<string | null>) {
+  authTokenProvider = provider
+}
+
 export type Agency = {
   id: string
   name: string
-  adminEmail: string
+  clerkOrganizationId: string
   timezone: string
   setupComplete: boolean
   openaiConfigured: boolean
   anthropicConfigured: boolean
+  role: 'ADMIN' | 'MEMBER'
+  permissions: string[]
 }
 
 export type ClientRow = {
@@ -52,11 +60,12 @@ export type UsageLogRow = {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = await authTokenProvider?.()
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers || {}),
     },
   })
@@ -75,13 +84,32 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const mandateApi = {
-  bootstrap: () => api<{ needsSetup: boolean; agencyNameDefault: string }>('/api/bootstrap'),
-  me: () => api<{ agency: Agency }>('/api/me'),
-  setup: (body: Record<string, unknown>) =>
-    api<{ agency: Agency }>('/api/setup', { method: 'POST', body: JSON.stringify(body) }),
-  login: (body: { email: string; password: string }) =>
-    api<{ agency: Agency }>('/api/login', { method: 'POST', body: JSON.stringify(body) }),
-  logout: () => api<{ ok: boolean }>('/api/logout', { method: 'POST', body: '{}' }),
+  bootstrap: () =>
+    api<{ authProvider: 'clerk'; agencyNameDefault: string; standalone: boolean }>('/api/bootstrap'),
+  me: async () => {
+    const result = await api<{
+      agency: Omit<Agency, 'role' | 'permissions'>
+      user: { id: string; role: Agency['role']; permissions: string[] }
+    }>('/api/me')
+    return {
+      agency: {
+        ...result.agency,
+        role: result.user.role,
+        permissions: result.user.permissions,
+      },
+      user: result.user,
+    }
+  },
+  completeOnboarding: (timezone: string) =>
+    api<{ agency: Omit<Agency, 'role' | 'permissions'> }>('/api/onboarding/complete', {
+      method: 'POST',
+      body: JSON.stringify({ timezone }),
+    }),
+  updateProviders: (body: { openaiApiKey?: string; anthropicApiKey?: string }) =>
+    api<{ agency: Omit<Agency, 'role' | 'permissions'> }>('/api/providers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   dashboard: () =>
     api<{ generatedAt: string; timezone: string; clients: SpendRow[] }>('/api/dashboard'),
   clients: () => api<{ clients: ClientRow[] }>('/api/clients'),
@@ -140,7 +168,10 @@ export const mandateApi = {
     format: 'pdf' | 'csv',
     filename: string,
   ) {
-    const res = await fetch(this.statementUrl(id, period, format), { credentials: 'include' })
+    const token = await authTokenProvider?.()
+    const res = await fetch(this.statementUrl(id, period, format), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
     if (!res.ok) {
       const text = await res.text()
       throw new Error(text || `Download failed (${res.status})`)

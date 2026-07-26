@@ -1,16 +1,22 @@
 import Fastify from 'fastify'
+import type { FastifyReply } from 'fastify'
 import cors from '@fastify/cors'
-import cookie from '@fastify/cookie'
+import helmet from '@fastify/helmet'
+import rateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
+import { clerkPlugin } from '@clerk/fastify'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import { env } from './config.js'
+import { prisma } from './db.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerClientRoutes } from './routes/clients.js'
 import { registerDashboardRoutes } from './routes/dashboard.js'
 import { registerGatewayRoutes } from './routes/gateway.js'
 import { registerStatementRoutes } from './routes/statements.js'
+import { registerWebhookRoutes } from './routes/webhooks.js'
+import { mandateErrorBody } from './utils/errors.js'
 import { runBudgetAlertPass } from './workers/budget-alerts.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -18,24 +24,61 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export async function buildApp(opts: { withStatic?: boolean } = {}) {
   const app = Fastify({
     logger: true,
-    bodyLimit: 25 * 1024 * 1024,
-    trustProxy: true,
+    bodyLimit: 10 * 1024 * 1024,
+    trustProxy: env.NODE_ENV === 'production' ? 1 : false,
   })
 
   // Register first so static/SPA fallback can never shadow it (Railway healthcheck).
-  app.get('/health', async () => ({ ok: true }))
-  app.get('/api/health', async () => ({
-    ok: true,
-    standalone: env.STANDALONE,
-    port: Number(process.env.PORT || env.PORT),
-  }))
+  const healthResponse = async (reply: FastifyReply) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      return {
+        ok: true,
+        database: 'ready',
+        standalone: env.STANDALONE,
+        port: Number(process.env.PORT || env.PORT),
+      }
+    } catch {
+      return reply.code(503).send({
+        ok: false,
+        database: 'unavailable',
+      })
+    }
+  }
+  app.get('/health', async (_request, reply) => healthResponse(reply))
+  app.get('/api/health', async (_request, reply) => healthResponse(reply))
 
   await app.register(cors, {
-    origin: true,
-    credentials: true,
+    origin: env.APP_ORIGINS,
+    credentials: false,
   })
-  await app.register(cookie, {
-    secret: env.SESSION_SECRET,
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", 'https://*.clerk.accounts.dev', 'https://*.clerk.com'],
+        connectSrc: [
+          "'self'",
+          ...env.APP_ORIGINS,
+          'https://*.clerk.accounts.dev',
+          'https://*.clerk.com',
+          'https://api.clerk.com',
+        ],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        frameSrc: ['https://*.clerk.accounts.dev', 'https://*.clerk.com'],
+      },
+    },
+  })
+  await app.register(rateLimit, {
+    global: true,
+    max: 300,
+    timeWindow: '1 minute',
+  })
+  await app.register(clerkPlugin, {
+    secretKey: env.CLERK_SECRET_KEY,
+    publishableKey: env.CLERK_PUBLISHABLE_KEY,
+    jwtKey: env.CLERK_JWT_KEY,
   })
 
   app.addContentTypeParser(
@@ -56,16 +99,43 @@ export async function buildApp(opts: { withStatic?: boolean } = {}) {
     },
   )
 
+  await registerWebhookRoutes(app)
   await registerGatewayRoutes(app)
   await registerAuthRoutes(app)
   await registerClientRoutes(app)
   await registerDashboardRoutes(app)
   await registerStatementRoutes(app)
 
+  app.setErrorHandler((error, request, reply) => {
+    const err = error instanceof Error ? error : new Error('Unknown request error')
+    const statusCode = (err as Error & { statusCode?: number }).statusCode
+    const status = statusCode && statusCode >= 400 ? statusCode : 500
+    if (status >= 500) {
+      request.log.error({ err }, 'unhandled request error')
+    } else {
+      request.log.warn({ err }, 'request rejected')
+    }
+    return reply
+      .code(status)
+      .send(
+        mandateErrorBody(
+          status >= 500
+            ? 'INTERNAL_ERROR'
+            : status === 401
+              ? 'UNAUTHORIZED'
+              : status === 403
+                ? 'FORBIDDEN'
+                : 'BAD_REQUEST',
+          status >= 500 ? 'An unexpected error occurred.' : err.message,
+        ),
+      )
+  })
+
   if (env.NODE_ENV !== 'test') {
-    setInterval(() => {
+    const alertTimer = setInterval(() => {
       runBudgetAlertPass().catch((err) => app.log.error({ err }, 'budget alert pass failed'))
     }, 30_000)
+    alertTimer.unref()
   }
 
   if (opts.withStatic !== false) {

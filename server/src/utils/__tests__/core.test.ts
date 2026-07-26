@@ -70,9 +70,8 @@ describe('statements', () => {
 
 describe('seal', () => {
   it('round-trips secrets', () => {
-    process.env.SESSION_SECRET = 'test-session-secret-32chars!!'
-    // re-import not needed — seal reads env at call via config; ensure config loaded
     const sealed = sealSecret('sk-test-key')
+    expect(sealed.startsWith('v2.')).toBe(true)
     expect(unsealSecret(sealed)).toBe('sk-test-key')
   })
 })

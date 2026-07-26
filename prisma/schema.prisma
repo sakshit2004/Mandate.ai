@@ -13,33 +13,76 @@ enum BudgetPeriod {
   monthly
 }
 
+enum AgencyStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum MembershipRole {
+  ADMIN
+  MEMBER
+}
+
 model Agency {
-  id                  String    @id @default(cuid())
+  id                  String       @id @default(cuid())
+  clerkOrganizationId String?      @unique
   name                String
-  timezone            String    @default("America/Denver")
-  adminEmail          String    @unique
-  passwordHash        String
-  setupComplete       Boolean   @default(false)
-  openaiConfigured    Boolean   @default(false)
-  anthropicConfigured Boolean   @default(false)
+  timezone            String       @default("America/Denver")
+  status              AgencyStatus @default(ACTIVE)
+  setupComplete       Boolean      @default(false)
+  openaiConfigured    Boolean      @default(false)
+  anthropicConfigured Boolean      @default(false)
   /// AES-GCM sealed provider keys (standalone mode — no LiteLLM).
   sealedOpenaiKey     String?
   sealedAnthropicKey  String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
   clients             Client[]
-  sessions            Session[]
+  memberships         AgencyMembership[]
+  auditEvents         AuditEvent[]
 }
 
-model Session {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
-  agencyId  String
-  agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+model User {
+  id           String   @id @default(cuid())
+  clerkUserId  String   @unique
+  primaryEmail String?
+  name         String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  memberships  AgencyMembership[]
 
-  @@index([agencyId])
+  @@index([primaryEmail])
+}
+
+model AgencyMembership {
+  id                String         @id @default(cuid())
+  clerkMembershipId String?        @unique
+  agencyId          String
+  userId            String
+  role              MembershipRole @default(MEMBER)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  agency            Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, userId])
+  @@index([userId])
+}
+
+model AuditEvent {
+  id               String   @id @default(cuid())
+  agencyId         String
+  actorClerkUserId String
+  action           String
+  targetType       String
+  targetId         String?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+  agency           Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId, createdAt])
+  @@index([actorClerkUserId])
 }
 
 model Client {
@@ -61,9 +104,22 @@ model Client {
   updatedAt    DateTime     @updatedAt
   alerts       BudgetAlert[]
   usageEvents  UsageEvent[]
+  reservations BudgetReservation[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])
+}
+
+model BudgetReservation {
+  id             String   @id
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  budgetWindowId String
+  amountUsd      Float
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([clientId, budgetWindowId, expiresAt])
 }
 
 model UsageEvent {

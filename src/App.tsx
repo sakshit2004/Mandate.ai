@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { useState } from 'react'
 import {
   ArrowRight,
   Check,
@@ -93,65 +93,13 @@ function Logo() {
 }
 
 function InviteForm({ compact = false }: { compact?: boolean }) {
-  const [email, setEmail] = useState('')
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle')
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!email) return
-
-    const endpoint = import.meta.env.VITE_WAITLIST_ENDPOINT?.trim()
-    if (!endpoint) {
-      setStatus('error')
-      return
-    }
-
-    setStatus('submitting')
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, source: 'mandate-landing' }),
-      })
-      if (!response.ok) throw new Error(`Waitlist request failed: ${response.status}`)
-      setStatus('submitted')
-    } catch {
-      setStatus('error')
-    }
-  }
-
-  if (status === 'submitted') {
-    return (
-      <div className={`form-success ${compact ? 'compact' : ''}`} role="status">
-        <Check size={15} strokeWidth={2.5} />
-        You're on the beta list. We'll be in touch.
-      </div>
-    )
-  }
-
   return (
-    <form className={`invite-form ${compact ? 'compact' : ''}`} onSubmit={submit}>
-      <label className="sr-only" htmlFor={compact ? 'footer-email' : 'hero-email'}>
-        Work email
-      </label>
-      <input
-        id={compact ? 'footer-email' : 'hero-email'}
-        type="email"
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-        placeholder="you@youragency.com"
-        required
-      />
-      <button type="submit" disabled={status === 'submitting'}>
-        {status === 'submitting' ? 'sending…' : 'request an invite'}
+    <div className={`invite-form ${compact ? 'compact' : ''}`}>
+      <a className="button" href="/sign-up">
+        create your free account
         <ArrowRight size={14} />
-      </button>
-      {status === 'error' && (
-        <p className="form-error" role="alert">
-          Invite form is unavailable. Email <a href="mailto:hello@mandate.dev">hello@mandate.dev</a>.
-        </p>
-      )}
-    </form>
+      </a>
+    </div>
   )
 }
 
@@ -426,11 +374,11 @@ function App() {
             </a>
           </div>
           <div className="nav-actions">
-            <a className="text-link" href="/login">
+            <a className="text-link" href="/sign-in">
               sign in
             </a>
-            <a className="button button-small" href="#invite">
-              join the beta
+            <a className="button button-small" href="/sign-up">
+              start free
             </a>
           </div>
         </nav>
@@ -449,7 +397,7 @@ function App() {
             without exposing your real provider credentials.
           </p>
           <InviteForm />
-          <p className="form-note">10 agencies in the first beta · $10 metered credit each · no card required</p>
+          <p className="form-note">Open signup · no card required · invite your team</p>
           <DashboardPreview />
           <div className="integrations">
             <span>LOCKED MVP CONNECTIONS</span>
@@ -625,7 +573,7 @@ function App() {
           <div className="shell">
             <SquareTerminal size={22} />
             <h2>Stop finding out when the invoice hits.</h2>
-            <p>10 agencies in the first beta. Bring $10 of metered traffic on us.</p>
+            <p>Create an agency workspace and invite your team in minutes.</p>
             <InviteForm compact />
           </div>
         </section>
@@ -640,7 +588,7 @@ function App() {
           <span>PRODUCT</span>
           <a href="#product">Overview</a>
           <a href="/n8n-setup.html">n8n setup</a>
-          <a href="#invite">Beta access</a>
+          <a href="/sign-up">Create account</a>
         </div>
         <div>
           <span>COMPANY</span>
@@ -651,7 +599,7 @@ function App() {
         <div>
           <span>STATUS</span>
           <p className="status">
-            <i /> Private beta · invite only
+            <i /> Open signup
           </p>
           <p>© 2026 Mandate</p>
         </div>

@@ -1,36 +1,97 @@
-import { FormEvent, useEffect, useState } from 'react'
+import {
+  CreateOrganization,
+  OrganizationProfile,
+  OrganizationSwitcher,
+  SignIn,
+  SignUp,
+  useAuth,
+  useOrganization,
+} from '@clerk/clerk-react'
+import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Agency, mandateApi } from '../api'
 
-export function SetupPage() {
+export function SignInPage() {
+  return (
+    <div className="auth-shell">
+      <SignIn
+        routing="path"
+        path="/sign-in"
+        signUpUrl="/sign-up"
+        forceRedirectUrl="/app"
+        fallback={<p className="auth-copy">Loading secure sign in…</p>}
+      />
+    </div>
+  )
+}
+
+export function SignUpPage() {
+  return (
+    <div className="auth-shell">
+      <SignUp
+        routing="path"
+        path="/sign-up"
+        signInUrl="/sign-in"
+        forceRedirectUrl="/onboarding"
+        fallback={<p className="auth-copy">Loading secure sign up…</p>}
+      />
+    </div>
+  )
+}
+
+export function OnboardingPage() {
   const navigate = useNavigate()
-  const [agencyName, setAgencyName] = useState('Fieldnote Automation')
-  const [adminEmail, setAdminEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const { isLoaded, isSignedIn, orgId } = useAuth()
+  const { membership } = useOrganization()
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Denver')
   const [openaiApiKey, setOpenaiApiKey] = useState('')
   const [anthropicApiKey, setAnthropicApiKey] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [blocked, setBlocked] = useState(false)
+  const [provisioned, setProvisioned] = useState(false)
 
   useEffect(() => {
-    mandateApi.bootstrap().then((b) => {
-      if (!b.needsSetup) setBlocked(true)
-      if (b.agencyNameDefault) setAgencyName(b.agencyNameDefault)
-    }).catch(() => undefined)
-  }, [])
+    if (!isSignedIn || !orgId || !membership) return
+    let cancelled = false
+    async function provision() {
+      setBusy(true)
+      setError('')
+      try {
+        try {
+          const current = await mandateApi.me()
+          if (current.agency.setupComplete || current.agency.role === 'MEMBER') {
+            navigate('/app', { replace: true })
+            return
+          }
+        } catch {
+          // The webhook may not have created the local agency projection yet.
+        }
+        if (membership?.role !== 'org:admin') throw new Error('Agency setup is waiting for an admin.')
+        await mandateApi.completeOnboarding(timezone)
+        if (!cancelled) setProvisioned(true)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not provision agency')
+      } finally {
+        if (!cancelled) setBusy(false)
+      }
+    }
+    provision()
+    return () => {
+      cancelled = true
+    }
+  }, [isSignedIn, membership, navigate, orgId])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (!openaiApiKey && !anthropicApiKey) {
+      setError('Add at least one provider key, or continue without one.')
+      return
+    }
     setError('')
     setBusy(true)
     try {
-      await mandateApi.setup({
-        agencyName,
-        adminEmail,
-        password,
-        timezone,
+      await mandateApi.completeOnboarding(timezone)
+      await mandateApi.updateProviders({
         openaiApiKey: openaiApiKey || undefined,
         anthropicApiKey: anthropicApiKey || undefined,
       })
@@ -42,26 +103,26 @@ export function SetupPage() {
     }
   }
 
-  if (blocked) return <Navigate to="/login" replace />
+  if (!isLoaded) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
+  if (!isSignedIn) return <Navigate to="/sign-in" replace />
+  if (!orgId) {
+    return (
+      <div className="auth-shell">
+        <div>
+          <p className="eyebrow">CREATE YOUR WORKSPACE</p>
+          <CreateOrganization afterCreateOrganizationUrl="/onboarding" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="auth-shell">
       <form className="auth-card" onSubmit={onSubmit}>
-        <p className="eyebrow left">FIRST RUN</p>
-        <h1>Set up Mandate</h1>
-        <p className="auth-copy">One agency admin, one OpenAI key, one Anthropic key — encrypted at rest by the metering gateway.</p>
-        <label>
-          Agency name
-          <input value={agencyName} onChange={(e) => setAgencyName(e.target.value)} required />
-        </label>
-        <label>
-          Admin email
-          <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} required />
-        </label>
-        <label>
-          Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
-        </label>
+        <p className="eyebrow left">AGENCY ONBOARDING</p>
+        <h1>Connect a provider</h1>
+        <p className="auth-copy">Your workspace is ready. Provider keys are encrypted before they are stored.</p>
+        <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/onboarding" />
         <label>
           Timezone
           <input value={timezone} onChange={(e) => setTimezone(e.target.value)} required />
@@ -75,35 +136,80 @@ export function SetupPage() {
           <input value={anthropicApiKey} onChange={(e) => setAnthropicApiKey(e.target.value)} placeholder="sk-ant-…" autoComplete="off" />
         </label>
         {error && <p className="form-error" role="alert">{error}</p>}
-        <button type="submit" disabled={busy}>{busy ? 'saving…' : 'create agency'}</button>
+        <button type="submit" disabled={busy || !provisioned}>{busy ? 'saving…' : 'save and open dashboard'}</button>
+        {provisioned && (
+          <button type="button" className="button-ghost" onClick={() => navigate('/app')}>
+            continue without a provider
+          </button>
+        )}
         <p className="auth-footer"><Link to="/">← back to site</Link></p>
       </form>
     </div>
   )
 }
 
-export function LoginPage() {
-  const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [needsSetup, setNeedsSetup] = useState(false)
-
+export function useAgency(): { agency: Agency | null; loading: boolean; refresh: () => void } {
+  const { isLoaded, isSignedIn, orgId } = useAuth()
+  const [agency, setAgency] = useState<Agency | null>(null)
+  const [loading, setLoading] = useState(true)
+  const refresh = useCallback(() => {
+    if (!isLoaded) return
+    if (!isSignedIn || !orgId) {
+      setAgency(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    mandateApi
+      .me()
+      .then((r) => setAgency(r.agency))
+      .catch(() => setAgency(null))
+      .finally(() => setLoading(false))
+  }, [isLoaded, isSignedIn, orgId])
   useEffect(() => {
-    mandateApi.bootstrap().then((b) => setNeedsSetup(b.needsSetup)).catch(() => undefined)
-    mandateApi.me().then(() => navigate('/app')).catch(() => undefined)
-  }, [navigate])
+    refresh()
+  }, [refresh])
+  return { agency, loading, refresh }
+}
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault()
+export function TeamPage() {
+  return (
+    <div className="auth-shell">
+      <OrganizationProfile routing="path" path="/app/team" />
+    </div>
+  )
+}
+
+export function ProviderSettingsPage() {
+  const { agency, loading, refresh } = useAgency()
+  const [openaiApiKey, setOpenaiApiKey] = useState('')
+  const [anthropicApiKey, setAnthropicApiKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  if (loading) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
+  if (!agency) return <Navigate to="/onboarding" replace />
+  if (agency.role !== 'ADMIN') return <Navigate to="/app" replace />
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!openaiApiKey && !anthropicApiKey) {
+      setMessage('Enter at least one replacement provider key.')
+      return
+    }
     setBusy(true)
-    setError('')
+    setMessage('')
     try {
-      await mandateApi.login({ email, password })
-      navigate('/app')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
+      await mandateApi.updateProviders({
+        openaiApiKey: openaiApiKey || undefined,
+        anthropicApiKey: anthropicApiKey || undefined,
+      })
+      setOpenaiApiKey('')
+      setAnthropicApiKey('')
+      setMessage('Provider credentials updated.')
+      refresh()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not update provider credentials')
     } finally {
       setBusy(false)
     }
@@ -112,41 +218,24 @@ export function LoginPage() {
   return (
     <div className="auth-shell">
       <form className="auth-card" onSubmit={onSubmit}>
-        <p className="eyebrow left">AGENCY LOGIN</p>
-        <h1>Sign in</h1>
-        {needsSetup && (
-          <p className="auth-copy">
-            No agency yet. <Link to="/setup">Run first-time setup →</Link>
-          </p>
-        )}
+        <p className="eyebrow left">AGENCY SETTINGS</p>
+        <h1>Provider credentials</h1>
+        <p className="auth-copy">
+          OpenAI: {agency.openaiConfigured ? 'configured' : 'not configured'} · Anthropic:{' '}
+          {agency.anthropicConfigured ? 'configured' : 'not configured'}
+        </p>
         <label>
-          Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          New OpenAI API key
+          <input value={openaiApiKey} onChange={(event) => setOpenaiApiKey(event.target.value)} autoComplete="off" />
         </label>
         <label>
-          Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          New Anthropic API key
+          <input value={anthropicApiKey} onChange={(event) => setAnthropicApiKey(event.target.value)} autoComplete="off" />
         </label>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <button type="submit" disabled={busy}>{busy ? 'signing in…' : 'sign in'}</button>
+        {message && <p className="auth-copy" role="status">{message}</p>}
+        <button type="submit" disabled={busy}>{busy ? 'saving…' : 'update credentials'}</button>
+        <p className="auth-footer"><Link to="/app">← back to dashboard</Link></p>
       </form>
     </div>
   )
-}
-
-export function useAgency(): { agency: Agency | null; loading: boolean; refresh: () => void } {
-  const [agency, setAgency] = useState<Agency | null>(null)
-  const [loading, setLoading] = useState(true)
-  const refresh = () => {
-    setLoading(true)
-    mandateApi
-      .me()
-      .then((r) => setAgency(r.agency))
-      .catch(() => setAgency(null))
-      .finally(() => setLoading(false))
-  }
-  useEffect(() => {
-    refresh()
-  }, [])
-  return { agency, loading, refresh }
 }

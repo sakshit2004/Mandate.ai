@@ -22,8 +22,15 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.preprocess(emptyToUndefined, z.coerce.number().default(8788)),
   DATABASE_URL: z.string().min(1),
-  SESSION_SECRET: z.string().min(16),
+  ENCRYPTION_KEY: z.string().min(32),
+  LEGACY_ENCRYPTION_KEY: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
+  CLERK_SECRET_KEY: z.string().min(20),
+  CLERK_PUBLISHABLE_KEY: z.string().min(20),
+  CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(20),
+  CLERK_JWT_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  CLERK_LEGACY_AGENCY_ID: z.preprocess(emptyToUndefined, z.string().optional()),
   PUBLIC_BASE_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  APP_ORIGINS: z.preprocess(emptyToUndefined, z.string().optional()),
   AGENCY_NAME: z.preprocess(emptyToUndefined, z.string().default('Mandate Agency')),
   AGENCY_TIMEZONE: z.preprocess(emptyToUndefined, z.string().default('America/Denver')),
   ALERT_EMAIL_TO: z.preprocess(emptyToUndefined, z.string().email().optional()),
@@ -64,6 +71,12 @@ const emailConsoleExplicit =
 export const env = {
   ...parsed,
   PUBLIC_BASE_URL: resolvePublicBaseUrl(parsed.PUBLIC_BASE_URL),
+  APP_ORIGINS: (
+    parsed.APP_ORIGINS || resolvePublicBaseUrl(parsed.PUBLIC_BASE_URL)
+  )
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean),
   STANDALONE: parsed.STANDALONE ?? true,
   EMAIL_CONSOLE: emailConsoleExplicit ?? parsed.NODE_ENV !== 'production',
 }

@@ -36,13 +36,20 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
     ports:
       - "8788:8788"
     environment:
       NODE_ENV: production
       PORT: "8788"
       DATABASE_URL: postgresql://mandate:mandate@postgres:5432/mandate
-      SESSION_SECRET: ${SESSION_SECRET:-mandate-session-secret-change-me-now}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+      CLERK_WEBHOOK_SIGNING_SECRET: ${CLERK_WEBHOOK_SIGNING_SECRET}
+      CLERK_JWT_KEY: ${CLERK_JWT_KEY:-}
+      APP_ORIGINS: ${APP_ORIGINS:-http://localhost:8788}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8788}
       AGENCY_NAME: ${AGENCY_NAME:-Fieldnote Automation}
       AGENCY_TIMEZONE: ${AGENCY_TIMEZONE:-America/Denver}

@@ -178,8 +178,65 @@ export async function periodSpendForClient(
   return sumSpend(clientId, start, end)
 }
 
+export async function reserveClientBudget(input: {
+  reservationId: string
+  clientId: string
+  budgetWindowId: string
+  start: Date
+  end: Date
+  capUsd: number
+  amountUsd: number
+}): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Client" WHERE "id" = ${input.clientId} FOR UPDATE`
+    const now = new Date()
+    await tx.budgetReservation.deleteMany({
+      where: { clientId: input.clientId, expiresAt: { lte: now } },
+    })
+    const [usage, reservations] = await Promise.all([
+      tx.usageEvent.aggregate({
+        where: {
+          clientId: input.clientId,
+          ts: { gte: input.start, lt: input.end },
+          status: { not: 'error' },
+        },
+        _sum: { costUsd: true },
+      }),
+      tx.budgetReservation.aggregate({
+        where: {
+          clientId: input.clientId,
+          budgetWindowId: input.budgetWindowId,
+          expiresAt: { gt: now },
+        },
+        _sum: { amountUsd: true },
+      }),
+    ])
+    const spent = moneyUsd(usage._sum.costUsd ?? 0)
+    const reserved = moneyUsd(reservations._sum.amountUsd ?? 0)
+    const remaining = moneyUsd(input.capUsd - spent - reserved)
+    const requested = Math.max(0.0001, moneyUsd(input.amountUsd))
+    if (remaining < requested) return false
+
+    await tx.budgetReservation.create({
+      data: {
+        id: input.reservationId,
+        clientId: input.clientId,
+        budgetWindowId: input.budgetWindowId,
+        amountUsd: requested,
+        expiresAt: new Date(now.getTime() + 5 * 60_000),
+      },
+    })
+    return true
+  })
+}
+
+export async function releaseBudgetReservation(reservationId: string): Promise<void> {
+  await prisma.budgetReservation.deleteMany({ where: { id: reservationId } })
+}
+
 export async function recordUsageEvent(input: {
   requestId: string
+  reservationId?: string
   clientId: string
   provider: string
   model: string
@@ -189,25 +246,30 @@ export async function recordUsageEvent(input: {
   status: string
   tag: string | null
 }): Promise<void> {
-  await prisma.usageEvent.upsert({
-    where: { requestId: input.requestId },
-    create: {
-      requestId: input.requestId,
-      clientId: input.clientId,
-      provider: input.provider,
-      model: input.model,
-      tokensIn: input.tokensIn,
-      tokensOut: input.tokensOut,
-      costUsd: input.costUsd,
-      status: input.status,
-      tag: input.tag,
-    },
-    update: {
-      tokensIn: input.tokensIn,
-      tokensOut: input.tokensOut,
-      costUsd: input.costUsd,
-      status: input.status,
-      tag: input.tag,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.usageEvent.upsert({
+      where: { requestId: input.requestId },
+      create: {
+        requestId: input.requestId,
+        clientId: input.clientId,
+        provider: input.provider,
+        model: input.model,
+        tokensIn: input.tokensIn,
+        tokensOut: input.tokensOut,
+        costUsd: input.costUsd,
+        status: input.status,
+        tag: input.tag,
+      },
+      update: {
+        tokensIn: input.tokensIn,
+        tokensOut: input.tokensOut,
+        costUsd: input.costUsd,
+        status: input.status,
+        tag: input.tag,
+      },
+    })
+    if (input.reservationId) {
+      await tx.budgetReservation.deleteMany({ where: { id: input.reservationId } })
+    }
   })
 }

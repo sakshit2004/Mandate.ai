@@ -22,8 +22,15 @@ const port = Number(process.env.PORT || 8788)
 if (!process.env.DATABASE_URL) {
   fatal('DATABASE_URL is not set. Link the Railway Postgres plugin to this service.')
 }
-if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 16) {
-  fatal('SESSION_SECRET must be set (16+ characters) on this service.')
+if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length < 32) {
+  fatal('ENCRYPTION_KEY must be set (32+ characters) on this service.')
+}
+for (const name of [
+  'CLERK_SECRET_KEY',
+  'CLERK_PUBLISHABLE_KEY',
+  'CLERK_WEBHOOK_SIGNING_SECRET',
+]) {
+  if (!process.env[name]) fatal(`${name} must be set on this service.`)
 }
 
 if (!/[?&]connect_timeout=/.test(process.env.DATABASE_URL)) {
@@ -32,7 +39,7 @@ if (!/[?&]connect_timeout=/.test(process.env.DATABASE_URL)) {
 }
 
 log(`boot NODE_ENV=${process.env.NODE_ENV || ''} PORT=${port}`)
-log(`DATABASE_URL=set SESSION_SECRET=set`)
+log('DATABASE_URL=set ENCRYPTION_KEY=set CLERK_KEYS=set')
 
 const probe = http.createServer((req, res) => {
   const path = req.url?.split('?')[0]

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../db.js'
-import { requireAuth } from '../services/auth.js'
+import { recordAuditEvent, requireAdmin, requireAuth } from '../services/auth.js'
 import {
   blockKey,
   generateVirtualKey,
@@ -55,8 +55,8 @@ export async function registerClientRoutes(app: FastifyInstance) {
     }
   })
 
-  app.post('/api/clients', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+  app.post('/api/clients', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const agency = await requireAdmin(request, reply)
     if (!agency) return
     const parsed = createSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -91,6 +91,11 @@ export async function registerClientRoutes(app: FastifyInstance) {
         budgetPeriod: parsed.data.budgetPeriod,
       },
     })
+    await recordAuditEvent(agency, 'client.created', 'client', client.id, {
+      name: client.name,
+      budgetPeriod: client.budgetPeriod,
+      maxBudgetUsd: client.maxBudgetUsd,
+    })
 
     return {
       client: {
@@ -108,7 +113,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
   })
 
   app.patch('/api/clients/:id', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+    const agency = await requireAdmin(request, reply)
     if (!agency) return
     const { id } = request.params as { id: string }
     const parsed = updateSchema.safeParse(request.body)
@@ -140,6 +145,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
         budgetPeriod: parsed.data.budgetPeriod,
       },
     })
+    await recordAuditEvent(agency, 'client.updated', 'client', updated.id, parsed.data)
     return {
       client: {
         id: updated.id,
@@ -155,7 +161,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
   })
 
   app.post('/api/clients/:id/kill', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+    const agency = await requireAdmin(request, reply)
     if (!agency) return
     const { id } = request.params as { id: string }
     const client = await prisma.client.findFirst({ where: { id, agencyId: agency.id } })
@@ -167,11 +173,12 @@ export async function registerClientRoutes(app: FastifyInstance) {
       where: { id: client.id },
       data: { killed: true },
     })
+    await recordAuditEvent(agency, 'client.killed', 'client', updated.id)
     return { client: { id: updated.id, killed: updated.killed, name: updated.name } }
   })
 
   app.post('/api/clients/:id/unkill', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+    const agency = await requireAdmin(request, reply)
     if (!agency) return
     const { id } = request.params as { id: string }
     const client = await prisma.client.findFirst({ where: { id, agencyId: agency.id } })
@@ -183,6 +190,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
       where: { id: client.id },
       data: { killed: false },
     })
+    await recordAuditEvent(agency, 'client.reenabled', 'client', updated.id)
     return { client: { id: updated.id, killed: updated.killed, name: updated.name } }
   })
 }

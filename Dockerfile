@@ -8,6 +8,8 @@ RUN npm ci
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
+ARG VITE_CLERK_PUBLISHABLE_KEY
+ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
@@ -17,6 +19,8 @@ COPY public ./public
 COPY server ./server
 
 ENV DATABASE_URL="postgresql://mandate:mandate@127.0.0.1:5432/mandate"
+RUN test -n "$VITE_CLERK_PUBLISHABLE_KEY" \
+  || (echo "FATAL: VITE_CLERK_PUBLISHABLE_KEY build argument is required" && exit 1)
 RUN npx prisma generate \
   && npm run build \
   && npx tsc -p server/tsconfig.json

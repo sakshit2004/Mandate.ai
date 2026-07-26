@@ -5,17 +5,26 @@ echo "→ Mandate boot"
 echo "  NODE_ENV=${NODE_ENV:-}"
 echo "  PORT=${PORT:-8788}"
 echo "  DATABASE_URL=${DATABASE_URL:+set}"
-echo "  SESSION_SECRET=${SESSION_SECRET:+set}"
+echo "  ENCRYPTION_KEY=${ENCRYPTION_KEY:+set}"
+echo "  CLERK_SECRET_KEY=${CLERK_SECRET_KEY:+set}"
 
 if [ -z "${DATABASE_URL:-}" ]; then
   echo "FATAL: DATABASE_URL is not set. Add a Postgres plugin and link DATABASE_URL to this service."
   exit 1
 fi
 
-if [ -z "${SESSION_SECRET:-}" ] || [ "${#SESSION_SECRET}" -lt 16 ]; then
-  echo "FATAL: SESSION_SECRET must be set (16+ characters) in Railway Variables."
+if [ -z "${ENCRYPTION_KEY:-}" ] || [ "${#ENCRYPTION_KEY}" -lt 32 ]; then
+  echo "FATAL: ENCRYPTION_KEY must be set (32+ characters) in service variables."
   exit 1
 fi
+
+for name in CLERK_SECRET_KEY CLERK_PUBLISHABLE_KEY CLERK_WEBHOOK_SIGNING_SECRET; do
+  eval "value=\${$name:-}"
+  if [ -z "$value" ]; then
+    echo "FATAL: $name must be set in service variables."
+    exit 1
+  fi
+done
 
 # Ensure Railway (and friends) always have a bindable PORT
 export PORT="${PORT:-8788}"

@@ -13,8 +13,20 @@ services:
         value: "1"
       - key: EMAIL_CONSOLE
         value: "0"
-      - key: SESSION_SECRET
+      - key: ENCRYPTION_KEY
         generateValue: true
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_WEBHOOK_SIGNING_SECRET
+        sync: false
+      - key: CLERK_JWT_KEY
+        sync: false
+      - key: APP_ORIGINS
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: mandate-db

@@ -4,9 +4,12 @@ export type MandateErrorCode =
   | 'INVALID_MANDATE_KEY'
   | 'INVALID_MANDATE_TAG'
   | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'ORGANIZATION_REQUIRED'
   | 'SETUP_REQUIRED'
   | 'NOT_FOUND'
   | 'BAD_REQUEST'
+  | 'INTERNAL_ERROR'
   | 'UPSTREAM_ERROR'
 
 export function mandateErrorBody(
