@@ -27,8 +27,10 @@ declare module 'fastify' {
   }
 }
 
-function roleFromClerk(role: string | null | undefined): MandateRole {
-  return role === 'org:admin' || role === 'admin' ? 'ADMIN' : 'MEMBER'
+export function mandateRoleFromClerk(role: string | null | undefined): MandateRole | null {
+  if (role === 'org:admin' || role === 'admin') return 'ADMIN'
+  if (role === 'org:member' || role === 'member') return 'MEMBER'
+  return null
 }
 
 export function clerkIdentity(
@@ -36,7 +38,7 @@ export function clerkIdentity(
 ): {
   userId: string | null
   organizationId: string | null
-  role: MandateRole
+  role: MandateRole | null
   permissions: string[]
 } {
   const auth = getAuth(request)
@@ -46,7 +48,7 @@ export function clerkIdentity(
   return {
     userId: partyAllowed ? (auth.userId ?? null) : null,
     organizationId: partyAllowed ? (auth.orgId ?? null) : null,
-    role: roleFromClerk(auth.orgRole),
+    role: mandateRoleFromClerk(auth.orgRole),
     permissions: [...(auth.orgPermissions || [])],
   }
 }
@@ -64,6 +66,12 @@ export async function requireAuth(
     reply
       .code(409)
       .send(mandateErrorBody('ORGANIZATION_REQUIRED', 'Select or create an agency workspace.'))
+    return null
+  }
+  if (!identity.role) {
+    reply
+      .code(403)
+      .send(mandateErrorBody('FORBIDDEN', 'This organization role is not supported.'))
     return null
   }
   const row = await prisma.agency.findUnique({

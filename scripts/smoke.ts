@@ -96,9 +96,34 @@ async function main() {
     const memberDashboard = await json('/api/dashboard', process.env.SMOKE_CLERK_TOKEN_MEMBER)
     const memberMutation = await json('/api/clients', process.env.SMOKE_CLERK_TOKEN_MEMBER, {
       method: 'POST',
-      body: JSON.stringify({ name: 'Forbidden', maxBudgetUsd: 1, budgetPeriod: 'daily' }),
+      body: JSON.stringify({
+        name: `Member Smoke ${Date.now()}`,
+        maxBudgetUsd: 1,
+        budgetPeriod: 'daily',
+      }),
     })
-    if (memberDashboard.status !== 200 || memberMutation.status !== 403) {
+    const memberKill = memberMutation.body?.client?.id
+      ? await json(
+          `/api/clients/${memberMutation.body.client.id}/kill`,
+          process.env.SMOKE_CLERK_TOKEN_MEMBER,
+          { method: 'POST', body: '{}' },
+        )
+      : null
+    const memberProviderMutation = await json(
+      '/api/providers',
+      process.env.SMOKE_CLERK_TOKEN_MEMBER,
+      {
+        method: 'POST',
+        body: JSON.stringify({ openaiApiKey: 'sk-member-must-not-update-provider' }),
+      },
+    )
+    if (
+      memberDashboard.status !== 200 ||
+      memberMutation.status !== 200 ||
+      !memberMutation.body?.mandateKey ||
+      memberKill?.status !== 200 ||
+      memberProviderMutation.status !== 403
+    ) {
       throw new Error('Member authorization smoke failed')
     }
   }

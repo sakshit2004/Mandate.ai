@@ -11,9 +11,10 @@ const onboardingSchema = z.object({
   timezone: z.string().min(2).default('America/Denver'),
 })
 
-function membershipRole(role: string | null | undefined): 'ADMIN' | 'MEMBER' {
-  return role === 'org:admin' || role === 'admin' ? 'ADMIN' : 'MEMBER'
-}
+const invitationSchema = z.object({
+  emailAddress: z.string().email(),
+  role: z.enum(['ADMIN', 'MEMBER']),
+})
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   app.get('/api/bootstrap', async () => ({
@@ -21,6 +22,37 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     agencyNameDefault: env.AGENCY_NAME,
     standalone: env.STANDALONE,
   }))
+
+  app.post('/api/team/invitations', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const agency = await requireAdmin(request, reply)
+    if (!agency) return
+    const parsed = invitationSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send(mandateErrorBody('BAD_REQUEST', 'Enter a valid invitation email and role.'))
+    }
+
+    const redirectUrl = new URL('/accept-invitation', env.PUBLIC_BASE_URL)
+    redirectUrl.searchParams.set('organization_id', agency.clerkOrganizationId)
+    const invitation = await clerkClient.organizations.createOrganizationInvitation({
+      organizationId: agency.clerkOrganizationId,
+      inviterUserId: agency.actorClerkUserId,
+      emailAddress: parsed.data.emailAddress.toLowerCase(),
+      role: parsed.data.role === 'ADMIN' ? 'org:admin' : 'org:member',
+      redirectUrl: redirectUrl.toString(),
+    })
+    await recordAuditEvent(agency, 'member.invited', 'organizationInvitation', invitation.id, {
+      emailAddress: parsed.data.emailAddress.toLowerCase(),
+      role: parsed.data.role,
+    })
+    return {
+      invitation: {
+        id: invitation.id,
+        emailAddress: invitation.emailAddress,
+        role: invitation.role,
+        status: invitation.status,
+      },
+    }
+  })
 
   app.post('/api/onboarding/complete', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const identity = clerkIdentity(request)
@@ -37,6 +69,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         .code(403)
         .send(mandateErrorBody('FORBIDDEN', 'Only an organization admin can provision an agency.'))
     }
+    const role = identity.role
 
     const parsed = onboardingSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -109,9 +142,9 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         create: {
           agencyId: localAgency.id,
           userId: user.id,
-          role: membershipRole(identity.role),
+          role,
         },
-        update: { role: membershipRole(identity.role) },
+        update: { role },
       })
       return localAgency
     })

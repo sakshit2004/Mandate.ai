@@ -1,6 +1,25 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../../app.js'
+import { mandateRoleFromClerk } from '../../services/auth.js'
+
+describe('Clerk organization role mapping', () => {
+  it.each([
+    ['org:admin', 'ADMIN'],
+    ['admin', 'ADMIN'],
+    ['org:member', 'MEMBER'],
+    ['member', 'MEMBER'],
+  ] as const)('maps %s to %s', (clerkRole, mandateRole) => {
+    expect(mandateRoleFromClerk(clerkRole)).toBe(mandateRole)
+  })
+
+  it.each([undefined, null, '', 'org:viewer', 'owner'])(
+    'rejects unsupported role %s',
+    (clerkRole) => {
+      expect(mandateRoleFromClerk(clerkRole)).toBeNull()
+    },
+  )
+})
 
 describe('production auth boundaries', () => {
   let app: FastifyInstance

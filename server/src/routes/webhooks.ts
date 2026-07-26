@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { verifyWebhook } from '@clerk/fastify/webhooks'
 import { env } from '../config.js'
 import { prisma } from '../db.js'
+import { mandateRoleFromClerk } from '../services/auth.js'
 import { mandateErrorBody } from '../utils/errors.js'
 
 type ClerkUserData = {
@@ -33,10 +34,6 @@ type ClerkMembershipData = {
 
 function userName(data: { first_name?: string | null; last_name?: string | null }): string | null {
   return [data.first_name, data.last_name].filter(Boolean).join(' ') || null
-}
-
-function roleFromClerk(role: string): 'ADMIN' | 'MEMBER' {
-  return role === 'org:admin' || role === 'admin' ? 'ADMIN' : 'MEMBER'
 }
 
 export async function registerWebhookRoutes(app: FastifyInstance) {
@@ -113,6 +110,14 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
       case 'organizationMembership.created':
       case 'organizationMembership.updated': {
         const data = event.data as ClerkMembershipData
+        const role = mandateRoleFromClerk(data.role)
+        if (!role) {
+          request.log.warn(
+            { clerkMembershipId: data.id, role: data.role },
+            'ignored Clerk membership with unsupported role',
+          )
+          break
+        }
         await prisma.$transaction(async (tx) => {
           const agency = await tx.agency.upsert({
             where: { clerkOrganizationId: data.organization.id },
@@ -143,11 +148,11 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
               clerkMembershipId: data.id,
               agencyId: agency.id,
               userId: user.id,
-              role: roleFromClerk(data.role),
+              role,
             },
             update: {
               clerkMembershipId: data.id,
-              role: roleFromClerk(data.role),
+              role,
             },
           })
         })

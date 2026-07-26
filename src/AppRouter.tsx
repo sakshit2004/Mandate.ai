@@ -2,6 +2,8 @@ import { useAuth } from '@clerk/clerk-react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import LandingApp from './App'
 import {
+  AcceptInvitationPage,
+  InvitationCompletePage,
   OnboardingPage,
   ProviderSettingsPage,
   SignInPage,
@@ -26,6 +28,8 @@ export function AppRouter() {
       <Route path="/setup" element={<Navigate to="/onboarding" replace />} />
       <Route path="/sign-in/*" element={<SignInPage />} />
       <Route path="/sign-up/*" element={<SignUpPage />} />
+      <Route path="/accept-invitation/complete" element={<InvitationCompletePage />} />
+      <Route path="/accept-invitation/*" element={<AcceptInvitationPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/app" element={<RequireAccount><DashboardPage /></RequireAccount>} />
       <Route path="/app/ledger" element={<RequireAccount><LedgerPage /></RequireAccount>} />

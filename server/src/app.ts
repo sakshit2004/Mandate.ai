@@ -56,7 +56,13 @@ export async function buildApp(opts: { withStatic?: boolean } = {}) {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", 'https://*.clerk.accounts.dev', 'https://*.clerk.com'],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          'https://*.clerk.accounts.dev',
+          'https://*.clerk.com',
+          'https://challenges.cloudflare.com',
+        ],
         connectSrc: [
           "'self'",
           ...env.APP_ORIGINS,
@@ -66,7 +72,13 @@ export async function buildApp(opts: { withStatic?: boolean } = {}) {
         ],
         imgSrc: ["'self'", 'data:', 'https:'],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        frameSrc: ['https://*.clerk.accounts.dev', 'https://*.clerk.com'],
+        workerSrc: ["'self'", 'blob:'],
+        frameSrc: [
+          "'self'",
+          'https://*.clerk.accounts.dev',
+          'https://*.clerk.com',
+          'https://challenges.cloudflare.com',
+        ],
       },
     },
   })

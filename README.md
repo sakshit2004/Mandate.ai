@@ -23,8 +23,31 @@ npm run dev
 
 Create a Clerk application, enable Organizations, and copy `.env.example` to `.env`. Add the
 Clerk publishable/secret keys and create a webhook for
-`http://localhost:8788/api/webhooks/clerk` with user, organization, and organization-membership
-events. Open **http://localhost:8788** → `/sign-up` → `/onboarding` → `/app`.
+`http://localhost:8788/api/webhooks/clerk`. Subscribe to `user.*`, `organization.*`, and
+`organizationMembership.*` events. Open **http://localhost:8788** → `/sign-up` → `/onboarding`
+→ `/app`.
+
+### Clerk organizations, invitations, and roles
+
+In the Clerk Dashboard:
+
+1. Keep the two organization roles `org:admin` and `org:member`. Organization admins must be
+   allowed to manage members and invitations; members should not have those permissions.
+2. Configure the application sign-in and sign-up URLs as `/sign-in` and `/sign-up`.
+3. Add each app origin to Clerk's allowed origins and redirect URLs. For local development, allow
+   `http://localhost:8788`; for production, use the exact Railway or Render HTTPS origin.
+4. Keep the webhook endpoint above subscribed to user, organization, and organization-membership
+   create/update/delete events. Invitation events are not required because membership events are
+   the source of the local user/agency projection.
+
+Admins invite teammates from **App → Team**. Mandate creates the Clerk invitation server-side so
+the email contains an `/accept-invitation` redirect for the current app origin. The embedded Clerk
+sign-in flow accepts the ticket, then Mandate explicitly activates the invited organization before
+opening `/app`. Set `PUBLIC_BASE_URL` to the exact public HTTPS origin so production invitation
+emails do not point at localhost or Clerk's Account Portal.
+
+- `ADMIN`: manage team membership, provider credentials, and clients.
+- `MEMBER`: view usage and manage clients, but cannot access team or provider settings.
 
 | Provider  | Base URL |
 |-----------|----------|

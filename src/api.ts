@@ -6,6 +6,20 @@ export function configureAuthTokenProvider(provider: () => Promise<string | null
   authTokenProvider = provider
 }
 
+export class MandateApiError extends Error {
+  readonly code?: string
+  readonly status: number
+  readonly details?: unknown
+
+  constructor(message: string, status: number, code?: string, details?: unknown) {
+    super(message)
+    this.name = 'MandateApiError'
+    this.status = status
+    this.code = code
+    this.details = details
+  }
+}
+
 export type Agency = {
   id: string
   name: string
@@ -77,8 +91,13 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     json = { raw: text }
   }
   if (!res.ok) {
-    const err = json as { error?: { message?: string; code?: string } }
-    throw new Error(err.error?.message || `Request failed (${res.status})`)
+    const err = json as { error?: { message?: string; code?: string; details?: unknown } }
+    throw new MandateApiError(
+      err.error?.message || `Request failed (${res.status})`,
+      res.status,
+      err.error?.code,
+      err.error?.details,
+    )
   }
   return json as T
 }
@@ -107,6 +126,13 @@ export const mandateApi = {
     }),
   updateProviders: (body: { openaiApiKey?: string; anthropicApiKey?: string }) =>
     api<{ agency: Omit<Agency, 'role' | 'permissions'> }>('/api/providers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  inviteMember: (body: { emailAddress: string; role: Agency['role'] }) =>
+    api<{
+      invitation: { id: string; emailAddress: string; role: string; status: string }
+    }>('/api/team/invitations', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

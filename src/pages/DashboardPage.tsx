@@ -26,13 +26,15 @@ function AppNav({ agencyName, role }: { agencyName: string; role: 'ADMIN' | 'MEM
           <NavLink to="/app/ledger" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             ledger
           </NavLink>
-          <NavLink to="/app/team" className={({ isActive }) => (isActive ? 'active' : undefined)}>
-            team
-          </NavLink>
           {role === 'ADMIN' && (
-            <NavLink to="/app/settings" className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              settings
-            </NavLink>
+            <>
+              <NavLink to="/app/team" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+                team
+              </NavLink>
+              <NavLink to="/app/settings" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+                settings
+              </NavLink>
+            </>
           )}
         </nav>
       </div>
@@ -110,11 +112,9 @@ export function DashboardPage() {
             <button type="button" className="button-ghost" onClick={load}>
               <RefreshCw size={14} /> refresh
             </button>
-            {agency.role === 'ADMIN' && (
-              <button type="button" onClick={() => setShowCreate(true)}>
-                <Plus size={14} /> new client key
-              </button>
-            )}
+            <button type="button" onClick={() => setShowCreate(true)}>
+              <Plus size={14} /> new client key
+            </button>
           </div>
         </div>
 
@@ -561,28 +561,26 @@ export function ClientDetailPage() {
                 <Link className="button-ghost" to={`/app/ledger?clientId=${row.id}`}>
                   full ledger
                 </Link>
-                {agency.role === 'ADMIN' && (
-                  <button
-                    type="button"
-                    className={row.killed ? '' : 'danger'}
-                    disabled={busyKill}
-                    onClick={async () => {
-                      if (!id) return
-                      setBusyKill(true)
-                      try {
-                        if (row.killed) await mandateApi.unkill(id)
-                        else await mandateApi.kill(id)
-                        await load()
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : 'Kill switch failed')
-                      } finally {
-                        setBusyKill(false)
-                      }
-                    }}
-                  >
-                    <Power size={14} /> {row.killed ? 're-enable key' : 'kill client'}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className={row.killed ? '' : 'danger'}
+                  disabled={busyKill}
+                  onClick={async () => {
+                    if (!id) return
+                    setBusyKill(true)
+                    try {
+                      if (row.killed) await mandateApi.unkill(id)
+                      else await mandateApi.kill(id)
+                      await load()
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Kill switch failed')
+                    } finally {
+                      setBusyKill(false)
+                    }
+                  }}
+                >
+                  <Power size={14} /> {row.killed ? 're-enable key' : 'kill client'}
+                </button>
               </div>
             </div>
 

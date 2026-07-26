@@ -1,15 +1,26 @@
 import {
   CreateOrganization,
-  OrganizationProfile,
   OrganizationSwitcher,
   SignIn,
   SignUp,
   useAuth,
   useOrganization,
+  useOrganizationList,
 } from '@clerk/clerk-react'
-import { FormEvent, useCallback, useEffect, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { Agency, mandateApi } from '../api'
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Agency, MandateApiError, mandateApi } from '../api'
+
+const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+const timezoneOptions = (() => {
+  try {
+    return Array.from(
+      new Set(['UTC', detectedTimezone, ...Intl.supportedValuesOf('timeZone')]),
+    ).sort((a, b) => a.localeCompare(b))
+  } catch {
+    return ['UTC', detectedTimezone, 'America/Denver']
+  }
+})()
 
 export function SignInPage() {
   return (
@@ -18,7 +29,7 @@ export function SignInPage() {
         routing="path"
         path="/sign-in"
         signUpUrl="/sign-up"
-        forceRedirectUrl="/app"
+        fallbackRedirectUrl="/app"
         fallback={<p className="auth-copy">Loading secure sign in…</p>}
       />
     </div>
@@ -32,9 +43,114 @@ export function SignUpPage() {
         routing="path"
         path="/sign-up"
         signInUrl="/sign-in"
-        forceRedirectUrl="/onboarding"
+        fallbackRedirectUrl="/onboarding"
         fallback={<p className="auth-copy">Loading secure sign up…</p>}
       />
+    </div>
+  )
+}
+
+export function AcceptInvitationPage() {
+  const [searchParams] = useSearchParams()
+  const organizationId = searchParams.get('organization_id')
+  const completeUrl = organizationId
+    ? `/accept-invitation/complete?organization_id=${encodeURIComponent(organizationId)}`
+    : '/onboarding'
+
+  return (
+    <div className="auth-shell">
+      <SignIn
+        routing="path"
+        path="/accept-invitation"
+        signUpUrl="/sign-up"
+        forceRedirectUrl={completeUrl}
+        signUpForceRedirectUrl={completeUrl}
+        fallback={<p className="auth-copy">Accepting your invitation…</p>}
+      />
+    </div>
+  )
+}
+
+export function InvitationCompletePage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const organizationId = searchParams.get('organization_id')
+  const activationStarted = useRef(false)
+  const [error, setError] = useState('')
+  const { isLoaded, setActive } = useOrganizationList()
+
+  useEffect(() => {
+    if (!isLoaded || !setActive || !organizationId || activationStarted.current) return
+    activationStarted.current = true
+    setActive({ organization: organizationId })
+      .then(() => navigate('/app', { replace: true }))
+      .catch((err) => {
+        activationStarted.current = false
+        setError(err instanceof Error ? err.message : 'Could not open the invited workspace')
+      })
+  }, [isLoaded, navigate, organizationId, setActive])
+
+  if (!organizationId) return <Navigate to="/onboarding" replace />
+  return (
+    <div className="auth-shell">
+      <div className="auth-card">
+        <p className="eyebrow left">TEAM INVITATION</p>
+        <h1>Opening your workspace</h1>
+        <p className="auth-copy">Your invitation was accepted. Mandate is activating the invited organization.</p>
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </div>
+    </div>
+  )
+}
+
+function WorkspacePicker() {
+  const navigate = useNavigate()
+  const activationStarted = useRef(false)
+  const [activating, setActivating] = useState(false)
+  const [error, setError] = useState('')
+  const { isLoaded, setActive, userMemberships } = useOrganizationList({
+    userMemberships: { infinite: true },
+  })
+  const memberships = userMemberships?.data || []
+
+  useEffect(() => {
+    if (
+      !isLoaded ||
+      !setActive ||
+      userMemberships?.isLoading ||
+      memberships.length !== 1 ||
+      activationStarted.current
+    ) {
+      return
+    }
+    activationStarted.current = true
+    setActivating(true)
+    setError('')
+    setActive({ organization: memberships[0].organization.id })
+      .then(() => navigate('/onboarding', { replace: true }))
+      .catch((err) => {
+        activationStarted.current = false
+        setError(err instanceof Error ? err.message : 'Could not activate your workspace')
+      })
+      .finally(() => setActivating(false))
+  }, [isLoaded, memberships, navigate, setActive, userMemberships?.isLoading])
+
+  if (!isLoaded || userMemberships?.isLoading || activating) {
+    return <div className="auth-shell"><p className="auth-copy">Opening your workspace…</p></div>
+  }
+
+  return (
+    <div className="auth-shell">
+      <div>
+        <p className="eyebrow">{memberships.length ? 'SELECT YOUR WORKSPACE' : 'CREATE YOUR WORKSPACE'}</p>
+        {memberships.length > 0 && (
+          <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/onboarding" />
+        )}
+        {memberships.length === 0 && (
+          <CreateOrganization afterCreateOrganizationUrl="/onboarding" />
+        )}
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </div>
     </div>
   )
 }
@@ -43,7 +159,7 @@ export function OnboardingPage() {
   const navigate = useNavigate()
   const { isLoaded, isSignedIn, orgId } = useAuth()
   const { membership } = useOrganization()
-  const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Denver')
+  const [timezone, setTimezone] = useState(detectedTimezone)
   const [openaiApiKey, setOpenaiApiKey] = useState('')
   const [anthropicApiKey, setAnthropicApiKey] = useState('')
   const [error, setError] = useState('')
@@ -52,21 +168,42 @@ export function OnboardingPage() {
 
   useEffect(() => {
     if (!isSignedIn || !orgId || !membership) return
+    const membershipRole = membership.role
     let cancelled = false
     async function provision() {
       setBusy(true)
       setError('')
+      setProvisioned(false)
       try {
-        try {
-          const current = await mandateApi.me()
-          if (current.agency.setupComplete || current.agency.role === 'MEMBER') {
-            navigate('/app', { replace: true })
-            return
+        const isAdmin = membershipRole === 'org:admin'
+        const isMember = membershipRole === 'org:member'
+        if (!isAdmin && !isMember) throw new Error('This organization role is not supported.')
+
+        let current: Awaited<ReturnType<typeof mandateApi.me>> | null = null
+        const attempts = isMember ? 5 : 1
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          try {
+            current = await mandateApi.me()
+            break
+          } catch (err) {
+            const waitingForProjection =
+              err instanceof MandateApiError && err.code === 'SETUP_REQUIRED'
+            if (!waitingForProjection) throw err
+            if (isMember && attempt + 1 < attempts) {
+              await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt))
+              if (cancelled) return
+              continue
+            }
           }
-        } catch {
-          // The webhook may not have created the local agency projection yet.
         }
-        if (membership?.role !== 'org:admin') throw new Error('Agency setup is waiting for an admin.')
+
+        if (current?.agency.setupComplete || current?.agency.role === 'MEMBER') {
+          navigate('/app', { replace: true })
+          return
+        }
+        if (isMember) {
+          throw new Error('Your workspace is still syncing. Please try again in a moment.')
+        }
         await mandateApi.completeOnboarding(timezone)
         if (!cancelled) setProvisioned(true)
       } catch (err) {
@@ -105,16 +242,7 @@ export function OnboardingPage() {
 
   if (!isLoaded) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
   if (!isSignedIn) return <Navigate to="/sign-in" replace />
-  if (!orgId) {
-    return (
-      <div className="auth-shell">
-        <div>
-          <p className="eyebrow">CREATE YOUR WORKSPACE</p>
-          <CreateOrganization afterCreateOrganizationUrl="/onboarding" />
-        </div>
-      </div>
-    )
-  }
+  if (!orgId) return <WorkspacePicker />
 
   return (
     <div className="auth-shell">
@@ -125,7 +253,13 @@ export function OnboardingPage() {
         <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/onboarding" />
         <label>
           Timezone
-          <input value={timezone} onChange={(e) => setTimezone(e.target.value)} required />
+          <select value={timezone} onChange={(e) => setTimezone(e.target.value)} required>
+            {timezoneOptions.map((option) => (
+              <option key={option} value={option}>
+                {option.replaceAll('_', ' ')}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           OpenAI API key
@@ -173,9 +307,78 @@ export function useAgency(): { agency: Agency | null; loading: boolean; refresh:
 }
 
 export function TeamPage() {
+  const { agency, loading } = useAgency()
+  const {
+    isLoaded: organizationLoaded,
+    memberships,
+  } = useOrganization({ memberships: { infinite: true } })
+  const [emailAddress, setEmailAddress] = useState('')
+  const [role, setRole] = useState<'ADMIN' | 'MEMBER'>('MEMBER')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  if (loading || !organizationLoaded) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
+  if (!agency) return <Navigate to="/onboarding" replace />
+  if (agency.role !== 'ADMIN') return <Navigate to="/app" replace />
+
+  async function onInvite(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      await mandateApi.inviteMember({ emailAddress, role })
+      setEmailAddress('')
+      setMessage('Invitation sent. The email link will return the user directly to Mandate.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not send invitation')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="auth-shell">
-      <OrganizationProfile routing="path" path="/app/team" />
+      <div className="auth-card">
+        <p className="eyebrow left">AGENCY TEAM</p>
+        <h1>Invite a teammate</h1>
+        <p className="auth-copy">Invitation links open Mandate and activate this workspace after acceptance.</p>
+        <form onSubmit={onInvite}>
+          <label>
+            Email address
+            <input
+              type="email"
+              value={emailAddress}
+              onChange={(event) => setEmailAddress(event.target.value)}
+              autoComplete="email"
+              required
+            />
+          </label>
+          <label>
+            Role
+            <select value={role} onChange={(event) => setRole(event.target.value as typeof role)}>
+              <option value="MEMBER">member</option>
+              <option value="ADMIN">admin</option>
+            </select>
+          </label>
+          {message && <p className="auth-copy" role="status">{message}</p>}
+          <button type="submit" disabled={busy}>{busy ? 'sending…' : 'send invitation'}</button>
+        </form>
+
+        <h2>Members</h2>
+        <ul className="breakdown-list">
+          {memberships?.data?.map((member) => (
+            <li key={member.id}>
+              <span>
+                {member.publicUserData?.firstName ||
+                  member.publicUserData?.identifier ||
+                  'Team member'}
+              </span>
+              <b>{member.role === 'org:admin' ? 'admin' : 'member'}</b>
+            </li>
+          ))}
+        </ul>
+        <p className="auth-footer"><Link to="/app">← back to dashboard</Link></p>
+      </div>
     </div>
   )
 }
