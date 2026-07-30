@@ -7,9 +7,10 @@ import {
   useOrganization,
   useOrganizationList,
 } from '@clerk/clerk-react'
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Agency, MandateApiError, mandateApi } from '../api'
+import { BrandLogo } from '../BrandLogo'
 
 const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 const timezoneOptions = (() => {
@@ -22,9 +23,20 @@ const timezoneOptions = (() => {
   }
 })()
 
-export function SignInPage() {
+function AuthChrome({ children }: { children: ReactNode }) {
   return (
     <div className="auth-shell">
+      <div className="auth-brand">
+        <BrandLogo to="/" />
+      </div>
+      {children}
+    </div>
+  )
+}
+
+export function SignInPage() {
+  return (
+    <AuthChrome>
       <SignIn
         routing="path"
         path="/sign-in"
@@ -32,13 +44,13 @@ export function SignInPage() {
         fallbackRedirectUrl="/app"
         fallback={<p className="auth-copy">Loading secure sign in…</p>}
       />
-    </div>
+    </AuthChrome>
   )
 }
 
 export function SignUpPage() {
   return (
-    <div className="auth-shell">
+    <AuthChrome>
       <SignUp
         routing="path"
         path="/sign-up"
@@ -46,7 +58,7 @@ export function SignUpPage() {
         fallbackRedirectUrl="/onboarding"
         fallback={<p className="auth-copy">Loading secure sign up…</p>}
       />
-    </div>
+    </AuthChrome>
   )
 }
 
@@ -58,7 +70,7 @@ export function AcceptInvitationPage() {
     : '/onboarding'
 
   return (
-    <div className="auth-shell">
+    <AuthChrome>
       <SignIn
         routing="path"
         path="/accept-invitation"
@@ -67,7 +79,7 @@ export function AcceptInvitationPage() {
         signUpForceRedirectUrl={completeUrl}
         fallback={<p className="auth-copy">Accepting your invitation…</p>}
       />
-    </div>
+    </AuthChrome>
   )
 }
 
@@ -92,14 +104,14 @@ export function InvitationCompletePage() {
 
   if (!organizationId) return <Navigate to="/onboarding" replace />
   return (
-    <div className="auth-shell">
+    <AuthChrome>
       <div className="auth-card">
         <p className="eyebrow left">TEAM INVITATION</p>
         <h1>Opening your workspace</h1>
         <p className="auth-copy">Your invitation was accepted. Mandate is activating the invited organization.</p>
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-    </div>
+    </AuthChrome>
   )
 }
 
@@ -136,11 +148,11 @@ function WorkspacePicker() {
   }, [isLoaded, memberships, navigate, setActive, userMemberships?.isLoading])
 
   if (!isLoaded || userMemberships?.isLoading || activating) {
-    return <div className="auth-shell"><p className="auth-copy">Opening your workspace…</p></div>
+    return <AuthChrome><p className="auth-copy">Opening your workspace…</p></AuthChrome>
   }
 
   return (
-    <div className="auth-shell">
+    <AuthChrome>
       <div>
         <p className="eyebrow">{memberships.length ? 'SELECT YOUR WORKSPACE' : 'CREATE YOUR WORKSPACE'}</p>
         {memberships.length > 0 && (
@@ -151,7 +163,7 @@ function WorkspacePicker() {
         )}
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-    </div>
+    </AuthChrome>
   )
 }
 
@@ -276,13 +288,13 @@ export function OnboardingPage() {
     }
   }
 
-  if (!isLoaded) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
+  if (!isLoaded) return <AuthChrome><p className="auth-copy">Loading…</p></AuthChrome>
   if (!isSignedIn) return <Navigate to="/sign-in" replace />
   if (!orgId) return <WorkspacePicker />
 
   if (step === 'byok') {
     return (
-      <div className="auth-shell">
+      <AuthChrome>
         <form className="auth-card" onSubmit={onSubmitByok}>
           <p className="eyebrow left">BRING YOUR OWN KEYS</p>
           <h1>Connect a provider</h1>
@@ -316,12 +328,12 @@ export function OnboardingPage() {
           </button>
           <p className="auth-footer"><Link to="/">← back to site</Link></p>
         </form>
-      </div>
+      </AuthChrome>
     )
   }
 
   return (
-    <div className="auth-shell">
+    <AuthChrome>
       <div className="auth-card">
         <p className="eyebrow left">AGENCY ONBOARDING</p>
         <h1>How will you fund AI spend?</h1>
@@ -351,7 +363,7 @@ export function OnboardingPage() {
         </p>
         <p className="auth-footer"><Link to="/">← back to site</Link> · <Link to="/docs">docs</Link></p>
       </div>
-    </div>
+    </AuthChrome>
   )
 }
 
@@ -390,7 +402,7 @@ export function TeamPage() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
-  if (loading || !organizationLoaded) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
+  if (loading || !organizationLoaded) return <AuthChrome><p className="auth-copy">Loading…</p></AuthChrome>
   if (!agency) return <Navigate to="/onboarding" replace />
   if (agency.role !== 'ADMIN') return <Navigate to="/app" replace />
 
@@ -410,7 +422,7 @@ export function TeamPage() {
   }
 
   return (
-    <div className="auth-shell">
+    <AuthChrome>
       <div className="auth-card">
         <p className="eyebrow left">AGENCY TEAM</p>
         <h1>Invite a teammate</h1>
@@ -452,7 +464,7 @@ export function TeamPage() {
         </ul>
         <p className="auth-footer"><Link to="/app">← back to dashboard</Link></p>
       </div>
-    </div>
+    </AuthChrome>
   )
 }
 
@@ -463,7 +475,7 @@ export function ProviderSettingsPage() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
-  if (loading) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
+  if (loading) return <AuthChrome><p className="auth-copy">Loading…</p></AuthChrome>
   if (!agency) return <Navigate to="/onboarding" replace />
   if (agency.role !== 'ADMIN') return <Navigate to="/app" replace />
 
@@ -492,7 +504,7 @@ export function ProviderSettingsPage() {
   }
 
   return (
-    <div className="auth-shell">
+    <AuthChrome>
       <form className="auth-card" onSubmit={onSubmit}>
         <p className="eyebrow left">AGENCY SETTINGS</p>
         <h1>Provider credentials</h1>
@@ -515,6 +527,6 @@ export function ProviderSettingsPage() {
         <button type="submit" disabled={busy}>{busy ? 'saving…' : 'update credentials'}</button>
         <p className="auth-footer"><Link to="/app">← back to dashboard</Link></p>
       </form>
-    </div>
+    </AuthChrome>
   )
 }

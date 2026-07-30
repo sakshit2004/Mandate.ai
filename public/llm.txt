@@ -2,11 +2,17 @@
 
 Same content as /llms.txt. Prefer https://trymandate.dev/llms.txt.
 
-- Human docs: /docs
+All docs are Markdown:
+
+- Full guide: /docs/guide.md (rendered at /docs)
+- Index: /docs/index.md
 - Quickstart: /docs/quickstart.md
 - n8n: /docs/n8n.md
 - API: /docs/api.md
 - Errors: /docs/errors.md
+- Free credits: /docs/promo.md
+
+Rendered: /docs
 
 OpenAI base: https://trymandate.dev/openai/v1
 Anthropic base: https://trymandate.dev/anthropic/v1

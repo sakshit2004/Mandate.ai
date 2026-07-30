@@ -3,23 +3,15 @@ import { Link, Navigate, NavLink, useNavigate, useParams, useSearchParams } from
 import { Download, Power, Plus, RefreshCw } from 'lucide-react'
 import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react'
 import { Agency, formatUsd, mandateApi, SpendRow, UsageLogRow } from '../api'
+import { BrandLogo } from '../BrandLogo'
 import { buildN8nSetupPrompt, mandateBaseUrls } from '../setupPrompt'
 import { useAgency } from './AuthPages'
-
-function Logo() {
-  return (
-    <Link className="logo" to="/app">
-      <span className="logo-mark" aria-hidden="true"><span /></span>
-      mandate
-    </Link>
-  )
-}
 
 function AppNav({ agencyName, role }: { agencyName: string; role: 'ADMIN' | 'MEMBER' }) {
   return (
     <header className="app-header">
       <div className="app-header-left">
-        <Logo />
+        <BrandLogo to="/app" />
         <nav className="app-nav" aria-label="App">
           <NavLink to="/app" end className={({ isActive }) => (isActive ? 'active' : undefined)}>
             clients
@@ -675,7 +667,7 @@ export function ClientDetailPage() {
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header-left">
-          <Logo />
+          <BrandLogo to="/app" />
           <nav className="app-nav" aria-label="App">
             <NavLink to="/app" end className={({ isActive }) => (isActive ? 'active' : undefined)}>
               clients

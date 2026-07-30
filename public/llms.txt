@@ -6,14 +6,12 @@ Base URL (production): https://trymandate.dev
 OpenAI proxy: https://trymandate.dev/openai/v1
 Anthropic proxy: https://trymandate.dev/anthropic/v1
 
-## Docs
+## Docs (Markdown)
 
-- [Human docs](https://trymandate.dev/docs): Quickstart, n8n, errors, free credits
-- [Quickstart (LLM)](https://trymandate.dev/docs/quickstart.md)
-- [n8n setup (LLM)](https://trymandate.dev/docs/n8n.md)
-- [API & auth (LLM)](https://trymandate.dev/docs/api.md)
-- [Errors (LLM)](https://trymandate.dev/docs/errors.md)
-
-## Optional
-
-- [n8n HTML guide](https://trymandate.dev/n8n-setup.html): redirects mindset to /docs; still useful for humans
+- [Full guide](https://trymandate.dev/docs/guide.md) (also rendered at /docs)
+- [Index](https://trymandate.dev/docs/index.md)
+- [Quickstart](https://trymandate.dev/docs/quickstart.md)
+- [n8n setup](https://trymandate.dev/docs/n8n.md)
+- [API & auth](https://trymandate.dev/docs/api.md)
+- [Errors](https://trymandate.dev/docs/errors.md)
+- [Free credits](https://trymandate.dev/docs/promo.md)

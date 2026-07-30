@@ -1,110 +1,223 @@
-import { Link } from 'react-router-dom'
-import { mandateBaseUrls } from '../setupPrompt'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, NavLink } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { LogoMark } from '../BrandLogo'
+
+const SIDEBAR = [
+  {
+    label: 'Guides',
+    items: [
+      { id: 'quickstart', title: 'Quickstart' },
+      { id: 'n8n-setup', title: 'n8n setup' },
+      { id: 'free-credits', title: 'Free credits' },
+    ],
+  },
+  {
+    label: 'Reference',
+    items: [
+      { id: 'api-auth', title: 'API & auth' },
+      { id: 'errors', title: 'Errors' },
+    ],
+  },
+  {
+    label: 'Markdown',
+    items: [
+      { href: '/docs/guide.md', title: 'guide.md' },
+      { href: '/llms.txt', title: 'llms.txt' },
+    ],
+  },
+] as const
+
+function injectOrigin(markdown: string, origin: string) {
+  return markdown.replaceAll('{origin}', origin).replaceAll('{your-origin}', origin)
+}
+
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/&/g, '')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+}
 
 export function DocsPage() {
-  const urls = mandateBaseUrls()
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://trymandate.dev'
+  const [markdown, setMarkdown] = useState('')
+  const [error, setError] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [activeId, setActiveId] = useState('quickstart')
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/docs/guide.md')
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to load /docs/guide.md')
+        return res.text()
+      })
+      .then((text) => {
+        if (!cancelled) setMarkdown(injectOrigin(text, origin))
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load docs')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [origin])
+
+  useEffect(() => {
+    if (!markdown) return
+    const id = window.location.hash.replace(/^#/, '')
+    if (!id) return
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'start' })
+      setActiveId(id)
+    })
+  }, [markdown])
+
+  useEffect(() => {
+    if (!markdown) return
+    const headings = Array.from(document.querySelectorAll('.docs-article h2[id]'))
+    if (!headings.length) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        if (visible[0]?.target.id) setActiveId(visible[0].target.id)
+      },
+      { rootMargin: '-20% 0px -65% 0px', threshold: [0, 1] },
+    )
+
+    headings.forEach((heading) => observer.observe(heading))
+    return () => observer.disconnect()
+  }, [markdown])
+
+  const components = useMemo(
+    () => ({
+      h2: ({ children }: { children?: ReactNode }) => {
+        const text = String(children)
+        const id = slugify(text)
+        return (
+          <h2 id={id}>
+            <a href={`#${id}`} className="docs-heading-anchor">
+              {children}
+            </a>
+          </h2>
+        )
+      },
+      a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+        if (href?.startsWith('/')) {
+          return <Link to={href}>{children}</Link>
+        }
+        if (href?.startsWith('#')) {
+          return <a href={href}>{children}</a>
+        }
+        return (
+          <a href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
+            {children}
+          </a>
+        )
+      },
+    }),
+    [],
+  )
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="app-header-left">
-          <Link className="logo" to="/">
-            <span className="logo-mark" aria-hidden="true"><span /></span>
-            mandate
+    <div className="docs-site">
+      <header className="docs-topbar">
+        <button
+          type="button"
+          className="docs-menu-btn"
+          aria-label="Open docs menu"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          ☰
+        </button>
+        <Link className="docs-brand" to="/docs" aria-label="Mandate docs">
+          <LogoMark />
+          <span>Mandate</span>
+          <em>Docs</em>
+        </Link>
+        <nav className="docs-top-links" aria-label="Docs actions">
+          <a href="/llms.txt">llms.txt</a>
+          <Link to="/app">Open app</Link>
+          <Link className="docs-top-cta" to="/sign-up">
+            Get started
           </Link>
-        </div>
-        <div className="app-header-meta">
-          <Link to="/app">open app →</Link>
-        </div>
-      </header>
-      <main className="app-main docs-main">
-        <p className="eyebrow left">DOCS</p>
-        <h1>Get a workflow metering in minutes</h1>
-        <p className="auth-copy">
-          Mandate is a drop-in proxy: keep your n8n OpenAI/Anthropic nodes, swap the base URL, use a capped{' '}
-          <code>mdt_live_…</code> key.
-        </p>
-
-        <nav className="docs-toc" aria-label="Docs sections">
-          <a href="#quickstart">Quickstart</a>
-          <a href="#n8n">n8n setup</a>
-          <a href="#errors">Errors</a>
-          <a href="#promo">Free credits</a>
-          <a href="/docs/quickstart.md">LLM: quickstart.md</a>
         </nav>
+      </header>
 
-        <section id="quickstart" className="detail-card" style={{ marginTop: 28 }}>
-          <h2>Quickstart</h2>
-          <ol>
-            <li>Sign up and create an agency workspace.</li>
-            <li>
-              Onboarding: <strong>Bring your own keys</strong> (OpenAI/Anthropic) or{' '}
-              <strong>Try with Mandate credits</strong> ($5 for 7 days, one client).
-            </li>
-            <li>Create a client key. Copy the key immediately — it is shown once.</li>
-            <li>In n8n, set the credential base URL to Mandate and paste the Mandate key.</li>
-            <li>Run one small model call. Confirm spend on <Link to="/app">Clients</Link> and the Ledger.</li>
-          </ol>
-        </section>
+      <div className="docs-shell">
+        <aside className={`docs-sidebar ${menuOpen ? 'open' : ''}`}>
+          <nav aria-label="Documentation">
+            {SIDEBAR.map((group) => (
+              <div key={group.label} className="docs-nav-group">
+                <p>{group.label}</p>
+                <ul>
+                  {group.items.map((item) =>
+                    'href' in item ? (
+                      <li key={item.href}>
+                        <a href={item.href} onClick={() => setMenuOpen(false)}>
+                          {item.title}
+                        </a>
+                      </li>
+                    ) : (
+                      <li key={item.id}>
+                        <a
+                          href={`#${item.id}`}
+                          className={activeId === item.id ? 'active' : undefined}
+                          onClick={() => setMenuOpen(false)}
+                        >
+                          {item.title}
+                        </a>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
+            ))}
+          </nav>
+          <div className="docs-sidebar-foot">
+            <NavLink to="/">← Marketing site</NavLink>
+          </div>
+        </aside>
 
-        <section id="n8n" className="detail-card" style={{ marginTop: 20 }}>
-          <h2>n8n setup</h2>
-          <p className="auth-copy">Use the same OpenAI or Anthropic node. Only change credential fields:</p>
-          <pre className="inline-pre">{`OpenAI base URL     ${urls.openai}
-Anthropic base URL  ${urls.anthropic}
-API key             mdt_live_…  (Mandate client key — not your provider key)`}</pre>
-          <p className="auth-copy">
-            Optional header: <code>X-Mandate-Tag</code> (e.g. <code>intake-sync</code>) for attribution.
+        {menuOpen && (
+          <button
+            type="button"
+            className="docs-sidebar-backdrop"
+            aria-label="Close docs menu"
+            onClick={() => setMenuOpen(false)}
+          />
+        )}
+
+        <main className="docs-content">
+          <p className="docs-llm-banner">
+            Are you an LLM? Read <a href="/llms.txt">llms.txt</a> for a summary of the docs, or{' '}
+            <a href="/docs/guide.md">guide.md</a> for the full page as Markdown.
           </p>
-          <p className="auth-copy">
-            Prefer an AI to wire this? On key reveal or the client page, click <strong>copy setup prompt</strong> and
-            paste it into Cursor / ChatGPT / Claude / n8n AI.
-          </p>
-          <p className="auth-copy">
-            Production host: <code>https://trymandate.dev/openai/v1</code> and{' '}
-            <code>https://trymandate.dev/anthropic/v1</code>.
-          </p>
-        </section>
 
-        <section id="errors" className="detail-card" style={{ marginTop: 20 }}>
-          <h2>Errors</h2>
-          <ul className="breakdown-list">
-            <li>
-              <span><code>429 CLIENT_BUDGET_EXCEEDED</code></span>
-              <b>Cap hit — raise budget (BYOK) or wait for the next period</b>
-            </li>
-            <li>
-              <span><code>403 CLIENT_KEY_KILLED</code></span>
-              <b>Key paused — re-enable on the client page</b>
-            </li>
-            <li>
-              <span><code>403 PROMO_TRIAL_ENDED</code></span>
-              <b>Free credits ended — add BYOK in Settings, then re-enable</b>
-            </li>
-            <li>
-              <span><code>401 INVALID_MANDATE_KEY</code></span>
-              <b>Missing or wrong Mandate key</b>
-            </li>
-            <li>
-              <span><code>400 BYOK_REQUIRED</code></span>
-              <b>Promo used — add your own provider keys to create more clients</b>
-            </li>
-          </ul>
-        </section>
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
 
-        <section id="promo" className="detail-card" style={{ marginTop: 20 }}>
-          <h2>Free credits</h2>
-          <p className="auth-copy">
-            Choosing Mandate credits on onboarding unlocks one promo client: <strong>$5 / weekly</strong> for{' '}
-            <strong>7 days</strong>. Budget and period are locked. After the trial, the key hard-stops until you add
-            your own OpenAI/Anthropic keys and re-enable the client.
-          </p>
-        </section>
+          {!error && !markdown && <p className="docs-loading">Loading docs…</p>}
 
-        <p className="auth-footer" style={{ marginTop: 28 }}>
-          <Link to="/">← home</Link> · <a href="/llms.txt">llms.txt</a> · <a href="/llm.txt">llm.txt</a>
-        </p>
-      </main>
+          {markdown && (
+            <article className="docs-article">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+                {markdown}
+              </ReactMarkdown>
+            </article>
+          )}
+        </main>
+      </div>
     </div>
   )
 }

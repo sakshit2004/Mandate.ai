@@ -3,13 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="refresh" content="0; url=/docs#n8n" />
+    <meta http-equiv="refresh" content="0; url=/docs#n8n-setup" />
     <meta name="description" content="Connect an n8n workflow to Mandate's OpenAI and Anthropic proxy endpoints." />
     <title>Mandate — n8n setup</title>
-    <link rel="canonical" href="/docs#n8n" />
+    <link rel="canonical" href="/docs#n8n-setup" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@1,600&display=swap');
-      :root { color: #181816; background: #f8f6ef; font-family: 'IBM Plex Sans', sans-serif; --line: #d8d3c5; --muted: #706a5e; --mono: 'IBM Plex Mono', monospace; }
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+      :root { color: #181816; background: #f8f6ef; font-family: 'IBM Plex Mono', monospace; --line: #d8d3c5; --muted: #706a5e; --mono: 'IBM Plex Mono', monospace; }
       * { box-sizing: border-box; }
       body { margin: 0; }
       a { color: inherit; }
@@ -17,14 +18,19 @@
       nav, main { width: min(850px, calc(100% - 40px)); margin: auto; }
       nav { height: 100%; display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 12px; }
       nav a { text-decoration: none; }
-      .logo { font-weight: 600; }
+      .logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+      .logo-mark {
+        width: 18px; height: 18px; display: grid; place-items: center;
+        border: 1px solid currentColor; border-radius: 2px;
+        font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: -0.06em;
+      }
       main { padding: 80px 0 110px; }
       .eyebrow { color: #99917e; font-family: var(--mono); font-size: 10px; letter-spacing: .18em; }
-      h1 { max-width: 700px; margin: 18px 0 24px; font-family: 'IBM Plex Serif', serif; font-size: clamp(42px, 7vw, 68px); font-style: italic; line-height: 1; letter-spacing: -.04em; }
+      h1 { max-width: 700px; margin: 18px 0 24px; font-family: var(--mono); font-size: clamp(32px, 5vw, 48px); font-style: normal; line-height: 1.1; letter-spacing: -.03em; font-weight: 600; }
       .lede { max-width: 670px; color: var(--muted); font-size: 16px; line-height: 1.7; }
       .notice { margin: 32px 0 54px; padding: 14px 16px; border: 1px solid #cbb98f; background: #fff9ee; color: #78541f; font-family: var(--mono); font-size: 10px; line-height: 1.6; }
       section { padding: 35px 0; border-top: 1px solid var(--line); }
-      h2 { margin: 0 0 15px; font-family: 'IBM Plex Serif', serif; font-size: 29px; font-style: italic; }
+      h2 { margin: 0 0 15px; font-family: var(--mono); font-size: 22px; font-style: normal; font-weight: 600; }
       h3 { margin: 26px 0 8px; font-size: 15px; }
       p, li { color: var(--muted); font-size: 14px; line-height: 1.7; }
       ol, ul { padding-left: 22px; }
@@ -43,13 +49,13 @@
   </head>
   <body>
     <header>
-      <nav><a class="logo" href="/">▣ mandate</a><a href="/docs">docs →</a></nav>
+      <nav><a class="logo" href="/"><span class="logo-mark" aria-hidden="true">M</span>mandate</a><a href="/docs">docs →</a></nav>
     </header>
     <main>
       <p class="eyebrow">N8N SETUP</p>
       <h1>Meter an n8n workflow through Mandate.</h1>
       <p class="lede">Keep the same OpenAI or Anthropic node. Replace its base URL and provider credential with the capped Mandate key for that client.</p>
-      <div class="notice">Preferred docs live at <a href="/docs#n8n"><strong>/docs</strong></a>. This page is a short mirror. Create a client in Mandate first (BYOK or one-week free credits), then copy its <code>mdt_live_…</code> key.</div>
+      <div class="notice">Preferred docs live at <a href="/docs#n8n-setup"><strong>/docs</strong></a>. This page is a short mirror. Create a client in Mandate first (BYOK or one-week free credits), then copy its <code>mdt_live_…</code> key.</div>
 
       <section>
         <h2>1. Create a client credential in n8n</h2>

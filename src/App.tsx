@@ -10,6 +10,7 @@ import {
   SquareTerminal,
   X,
 } from 'lucide-react'
+import { BrandLogo } from './BrandLogo'
 
 const clients = [
   { slug: 'millbrook-legal', label: 'Millbrook Legal', today: 12.44, spent: 187.02, cap: 200, calls: 18420 },
@@ -82,14 +83,7 @@ const faqs = [
 ]
 
 function Logo() {
-  return (
-    <a className="logo" href="#top" aria-label="Mandate home">
-      <span className="logo-mark" aria-hidden="true">
-        <span />
-      </span>
-      mandate
-    </a>
-  )
+  return <BrandLogo href="#top" />
 }
 
 function InviteForm({ compact = false }: { compact?: boolean }) {
@@ -526,7 +520,7 @@ function App() {
                 The setup guide covers both provider routes, client credentials, streaming usage,
                 429 and 403 responses, and a one-call verification.
               </p>
-              <a className="button guide-button" href="/docs#n8n">
+              <a className="button guide-button" href="/docs#n8n-setup">
                 open n8n setup guide <ArrowRight size={14} />
               </a>
             </div>
