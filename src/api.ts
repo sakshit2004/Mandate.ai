@@ -26,6 +26,8 @@ export type Agency = {
   clerkOrganizationId: string
   timezone: string
   setupComplete: boolean
+  fundingMode: 'BYOK' | 'MANDATE_PROMO' | null
+  promoClientClaimed: boolean
   openaiConfigured: boolean
   anthropicConfigured: boolean
   role: 'ADMIN' | 'MEMBER'
@@ -39,6 +41,8 @@ export type ClientRow = {
   keyPrefix: string
   maxBudgetUsd: number
   budgetPeriod: string
+  fundingSource: 'BYOK' | 'MANDATE_PROMO'
+  promoExpiresAt: string | null
   killed: boolean
   createdAt: string
 }
@@ -50,6 +54,8 @@ export type SpendRow = {
   killed: boolean
   keyPrefix: string
   budgetPeriod: string
+  fundingSource: 'BYOK' | 'MANDATE_PROMO'
+  promoExpiresAt: string | null
   capUsd: number
   spendTodayUsd: number
   spendPeriodUsd: number
@@ -119,10 +125,10 @@ export const mandateApi = {
       user: result.user,
     }
   },
-  completeOnboarding: (timezone: string) =>
+  completeOnboarding: (body: { timezone: string; fundingMode?: 'BYOK' | 'MANDATE_PROMO' }) =>
     api<{ agency: Omit<Agency, 'role' | 'permissions'> }>('/api/onboarding/complete', {
       method: 'POST',
-      body: JSON.stringify({ timezone }),
+      body: JSON.stringify(body),
     }),
   updateProviders: (body: { openaiApiKey?: string; anthropicApiKey?: string }) =>
     api<{ agency: Omit<Agency, 'role' | 'permissions'> }>('/api/providers', {

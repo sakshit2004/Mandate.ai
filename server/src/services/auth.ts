@@ -14,6 +14,8 @@ export type AuthAgency = {
   timezone: string
   status: 'ACTIVE' | 'DISABLED'
   setupComplete: boolean
+  fundingMode: 'BYOK' | 'MANDATE_PROMO' | null
+  promoClientClaimed: boolean
   openaiConfigured: boolean
   anthropicConfigured: boolean
   actorClerkUserId: string
@@ -94,6 +96,8 @@ export async function requireAuth(
     timezone: row.timezone,
     status: row.status,
     setupComplete: row.setupComplete,
+    fundingMode: row.fundingMode,
+    promoClientClaimed: row.promoClientClaimed,
     openaiConfigured: row.openaiConfigured,
     anthropicConfigured: row.anthropicConfigured,
     actorClerkUserId: identity.userId,

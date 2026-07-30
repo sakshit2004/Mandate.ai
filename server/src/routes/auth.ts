@@ -9,12 +9,37 @@ import { mandateErrorBody } from '../utils/errors.js'
 
 const onboardingSchema = z.object({
   timezone: z.string().min(2).default('America/Denver'),
+  fundingMode: z.enum(['BYOK', 'MANDATE_PROMO']).optional(),
 })
 
 const invitationSchema = z.object({
   emailAddress: z.string().email(),
   role: z.enum(['ADMIN', 'MEMBER']),
 })
+
+function agencyPublic(agency: {
+  id: string
+  name: string
+  timezone: string
+  setupComplete: boolean
+  fundingMode: 'BYOK' | 'MANDATE_PROMO' | null
+  promoClientClaimed: boolean
+  openaiConfigured: boolean
+  anthropicConfigured: boolean
+  clerkOrganizationId: string | null
+}) {
+  return {
+    id: agency.id,
+    name: agency.name,
+    timezone: agency.timezone,
+    setupComplete: agency.setupComplete,
+    fundingMode: agency.fundingMode,
+    promoClientClaimed: agency.promoClientClaimed,
+    openaiConfigured: agency.openaiConfigured,
+    anthropicConfigured: agency.anthropicConfigured,
+    clerkOrganizationId: agency.clerkOrganizationId,
+  }
+}
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   app.get('/api/bootstrap', async () => ({
@@ -103,12 +128,30 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         where: { clerkOrganizationId: organization.id },
       })
       if (localAgency) {
+        const fundingUpdate =
+          parsed.data.fundingMode && !localAgency.fundingMode
+            ? {
+                fundingMode: parsed.data.fundingMode,
+                setupComplete:
+                  parsed.data.fundingMode === 'MANDATE_PROMO'
+                    ? true
+                    : localAgency.setupComplete ||
+                      localAgency.openaiConfigured ||
+                      localAgency.anthropicConfigured,
+              }
+            : parsed.data.fundingMode === 'MANDATE_PROMO' && localAgency.fundingMode !== 'BYOK'
+              ? { fundingMode: 'MANDATE_PROMO' as const, setupComplete: true }
+              : parsed.data.fundingMode === 'BYOK' && !localAgency.fundingMode
+                ? { fundingMode: 'BYOK' as const }
+                : {}
+
         localAgency = await tx.agency.update({
           where: { id: localAgency.id },
           data: {
             name: organization.name,
             timezone: parsed.data.timezone,
             status: 'ACTIVE',
+            ...fundingUpdate,
           },
         })
       }
@@ -122,6 +165,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
               name: organization.name,
               timezone: parsed.data.timezone,
               status: 'ACTIVE',
+              ...(parsed.data.fundingMode
+                ? {
+                    fundingMode: parsed.data.fundingMode,
+                    setupComplete: parsed.data.fundingMode === 'MANDATE_PROMO',
+                  }
+                : {}),
             },
           })
         }
@@ -133,6 +182,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
             name: organization.name,
             timezone: parsed.data.timezone,
             status: 'ACTIVE',
+            fundingMode: parsed.data.fundingMode,
+            setupComplete: parsed.data.fundingMode === 'MANDATE_PROMO',
           },
         })
       }
@@ -153,7 +204,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       { actorClerkUserId: identity.userId, clerkOrganizationId: organization.id, agencyId: agency.id },
       'agency provisioned',
     )
-    return { agency }
+    return { agency: agencyPublic(agency) }
   })
 
   app.get('/api/me', async (request, reply) => {
@@ -165,6 +216,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         name: agency.name,
         timezone: agency.timezone,
         setupComplete: agency.setupComplete,
+        fundingMode: agency.fundingMode,
+        promoClientClaimed: agency.promoClientClaimed,
         openaiConfigured: agency.openaiConfigured,
         anthropicConfigured: agency.anthropicConfigured,
         clerkOrganizationId: agency.clerkOrganizationId,
@@ -189,6 +242,11 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     if (!body.success) {
       return reply.code(400).send(mandateErrorBody('BAD_REQUEST', 'Invalid provider payload.'))
     }
+    if (!body.data.openaiApiKey && !body.data.anthropicApiKey) {
+      return reply
+        .code(400)
+        .send(mandateErrorBody('BAD_REQUEST', 'Provide at least one OpenAI or Anthropic API key.'))
+    }
     await storeProviderKeys({
       agencyId: agency.id,
       openaiApiKey: body.data.openaiApiKey,
@@ -199,15 +257,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       anthropic: Boolean(body.data.anthropicApiKey),
     })
     const updated = await prisma.agency.findUniqueOrThrow({ where: { id: agency.id } })
-    return {
-      agency: {
-        id: updated.id,
-        name: updated.name,
-        timezone: updated.timezone,
-        setupComplete: updated.setupComplete,
-        openaiConfigured: updated.openaiConfigured,
-        anthropicConfigured: updated.anthropicConfigured,
-      },
-    }
+    return { agency: agencyPublic(updated) }
   })
 }

@@ -2,7 +2,8 @@ import { FormEvent, useEffect, useState } from 'react'
 import { Link, Navigate, NavLink, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Download, Power, Plus, RefreshCw } from 'lucide-react'
 import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react'
-import { formatUsd, mandateApi, SpendRow, UsageLogRow } from '../api'
+import { Agency, formatUsd, mandateApi, SpendRow, UsageLogRow } from '../api'
+import { buildN8nSetupPrompt, mandateBaseUrls } from '../setupPrompt'
 import { useAgency } from './AuthPages'
 
 function Logo() {
@@ -36,6 +37,9 @@ function AppNav({ agencyName, role }: { agencyName: string; role: 'ADMIN' | 'MEM
               </NavLink>
             </>
           )}
+          <NavLink to="/docs" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            docs
+          </NavLink>
         </nav>
       </div>
       <div className="app-header-meta">
@@ -59,7 +63,7 @@ function formatLedgerTime(iso: string) {
 }
 
 export function DashboardPage() {
-  const { agency, loading } = useAgency()
+  const { agency, loading, refresh } = useAgency()
   const navigate = useNavigate()
   const [rows, setRows] = useState<SpendRow[]>([])
   const [generatedAt, setGeneratedAt] = useState<string | null>(null)
@@ -121,26 +125,26 @@ export function DashboardPage() {
         {error && <p className="form-error" role="alert">{error}</p>}
         {!agency.setupComplete && agency.role === 'ADMIN' && (
           <p className="form-error">
-            Connect an OpenAI or Anthropic key before sending gateway traffic.{' '}
-            <Link to="/onboarding">Finish onboarding →</Link>
+            Finish onboarding — choose Mandate credits or add your OpenAI/Anthropic keys.{' '}
+            <Link to="/onboarding">Continue setup →</Link>
+          </p>
+        )}
+        {agency.fundingMode === 'MANDATE_PROMO' && !agency.openaiConfigured && !agency.anthropicConfigured && (
+          <p className="auth-copy">
+            You are on Mandate free credits: one client, $5 for 7 days. Add your own keys in{' '}
+            <Link to="/app/settings">Settings</Link> anytime to create more clients or continue after the trial.
           </p>
         )}
         {createdKey && (
-          <div className="key-reveal" role="status">
-            <strong>Copy this Mandate key now — it won’t be shown again.</strong>
-            <code>{createdKey}</code>
-            <button type="button" className="button-ghost" onClick={() => navigator.clipboard.writeText(createdKey)}>
-              copy
-            </button>
-            <button type="button" className="button-ghost" onClick={() => setCreatedKey(null)}>
-              dismiss
-            </button>
-          </div>
+          <KeyRevealPanel
+            mandateKey={createdKey}
+            onDismiss={() => setCreatedKey(null)}
+          />
         )}
 
         {rows.length === 0 ? (
           <div className="empty-state">
-            <p>No client keys yet. Create one, point n8n at Mandate, and watch spend move.</p>
+            <p>No client keys yet. Create one, point n8n at Mandate, and watch spend move. See <Link to="/docs">docs</Link>.</p>
           </div>
         ) : (
           <div className="spend-table-wrap">
@@ -185,15 +189,50 @@ export function DashboardPage() {
 
         {showCreate && (
           <CreateClientModal
+            agency={agency}
             onClose={() => setShowCreate(false)}
             onCreated={(key) => {
               setCreatedKey(key)
               setShowCreate(false)
               load()
             }}
+            onProvidersSaved={() => {
+              refresh()
+            }}
           />
         )}
       </main>
+    </div>
+  )
+}
+
+function KeyRevealPanel({ mandateKey, onDismiss, clientName }: { mandateKey: string; onDismiss: () => void; clientName?: string }) {
+  const urls = mandateBaseUrls()
+  const prompt = buildN8nSetupPrompt({ mandateKey, clientName })
+  return (
+    <div className="key-reveal" role="status">
+      <strong>Copy this Mandate key now — it won’t be shown again.</strong>
+      <code>{mandateKey}</code>
+      <div className="modal-actions" style={{ marginTop: 8 }}>
+        <button type="button" className="button-ghost" onClick={() => navigator.clipboard.writeText(mandateKey)}>
+          copy key
+        </button>
+        <button type="button" className="button-ghost" onClick={() => navigator.clipboard.writeText(prompt)}>
+          copy setup prompt
+        </button>
+        <button type="button" className="button-ghost" onClick={onDismiss}>
+          dismiss
+        </button>
+      </div>
+      <p className="auth-copy" style={{ marginTop: 12 }}>
+        In n8n, set the credential base URL and paste this key:
+      </p>
+      <pre className="inline-pre">{`OpenAI     ${urls.openai}
+Anthropic  ${urls.anthropic}
+API key    ${mandateKey}`}</pre>
+      <p className="auth-copy">
+        <Link to="/docs">Full docs →</Link>
+      </p>
     </div>
   )
 }
@@ -421,24 +460,92 @@ export function LedgerPage() {
 }
 
 function CreateClientModal({
+  agency,
   onClose,
   onCreated,
+  onProvidersSaved,
 }: {
+  agency: Agency
   onClose: () => void
   onCreated: (key: string) => void
+  onProvidersSaved: () => void
 }) {
+  const hasByok = agency.openaiConfigured || agency.anthropicConfigured
+  const promoEligible =
+    !hasByok && agency.fundingMode === 'MANDATE_PROMO' && !agency.promoClientClaimed
+  const needsInlineByok = !hasByok && !promoEligible
+
   const [name, setName] = useState('')
-  const [maxBudgetUsd, setMaxBudgetUsd] = useState(50)
-  const [budgetPeriod, setBudgetPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly')
+  const [maxBudgetUsd, setMaxBudgetUsd] = useState(promoEligible ? 5 : 50)
+  const [budgetPeriod, setBudgetPeriod] = useState<'daily' | 'weekly' | 'monthly'>(
+    promoEligible ? 'weekly' : 'monthly',
+  )
+  const [openaiApiKey, setOpenaiApiKey] = useState('')
+  const [anthropicApiKey, setAnthropicApiKey] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [byokReady, setByokReady] = useState(hasByok)
+
+  useEffect(() => {
+    setByokReady(hasByok)
+    if (hasByok && promoEligible) {
+      // agency upgraded mid-modal
+      setMaxBudgetUsd((v) => (v === 5 ? 50 : v))
+    }
+  }, [hasByok, promoEligible])
+
+  async function saveByok() {
+    if (!openaiApiKey && !anthropicApiKey) {
+      setError('Add at least one OpenAI or Anthropic API key to create more clients.')
+      return false
+    }
+    await mandateApi.updateProviders({
+      openaiApiKey: openaiApiKey || undefined,
+      anthropicApiKey: anthropicApiKey || undefined,
+    })
+    setByokReady(true)
+    setMaxBudgetUsd(50)
+    setBudgetPeriod('monthly')
+    onProvidersSaved()
+    return true
+  }
+
+  function onBudgetChange(value: number) {
+    if (promoEligible && !byokReady) {
+      setError(
+        'Custom budgets are only available with your own provider keys. Mandate free credits are $5 for one week.',
+      )
+      return
+    }
+    setError('')
+    setMaxBudgetUsd(value)
+  }
+
+  function onPeriodChange(value: 'daily' | 'weekly' | 'monthly') {
+    if (promoEligible && !byokReady) {
+      setError(
+        'Custom periods are only available with your own provider keys. Mandate free credits are $5 for one week.',
+      )
+      return
+    }
+    setError('')
+    setBudgetPeriod(value)
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError('')
     try {
-      const res = await mandateApi.createClient({ name, maxBudgetUsd, budgetPeriod })
+      if (needsInlineByok && !byokReady) {
+        const ok = await saveByok()
+        if (!ok) return
+      }
+      const res = await mandateApi.createClient({
+        name,
+        maxBudgetUsd: promoEligible && !byokReady ? 5 : maxBudgetUsd,
+        budgetPeriod: promoEligible && !byokReady ? 'weekly' : budgetPeriod,
+      })
       onCreated(res.mandateKey)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create key')
@@ -447,29 +554,58 @@ function CreateClientModal({
     }
   }
 
+  const lockedPromo = promoEligible && !byokReady
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="auth-card modal-card" onSubmit={onSubmit}>
         <p className="eyebrow left">NEW CLIENT KEY</p>
         <h2>Cap a client</h2>
+        {lockedPromo && (
+          <p className="auth-copy">
+            Mandate free credits: budget locked at <strong>$5 / week</strong> for 7 days. One promo client only.
+          </p>
+        )}
+        {needsInlineByok && (
+          <p className="auth-copy">
+            Your promo client is used. Add your own OpenAI or Anthropic key to create another capped client.
+          </p>
+        )}
         <label>
           Client name
           <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Harbor Dental" />
         </label>
+        {needsInlineByok && !byokReady && agency.role === 'ADMIN' && (
+          <>
+            <label>
+              OpenAI API key
+              <input value={openaiApiKey} onChange={(e) => setOpenaiApiKey(e.target.value)} placeholder="sk-…" autoComplete="off" />
+            </label>
+            <label>
+              Anthropic API key
+              <input value={anthropicApiKey} onChange={(e) => setAnthropicApiKey(e.target.value)} placeholder="sk-ant-…" autoComplete="off" />
+            </label>
+          </>
+        )}
         <label>
           Dollar budget
           <input
             type="number"
             min={0.01}
             step={0.01}
-            value={maxBudgetUsd}
-            onChange={(e) => setMaxBudgetUsd(Number(e.target.value))}
+            value={lockedPromo ? 5 : maxBudgetUsd}
+            onChange={(e) => onBudgetChange(Number(e.target.value))}
+            readOnly={lockedPromo}
             required
           />
         </label>
         <label>
           Period
-          <select value={budgetPeriod} onChange={(e) => setBudgetPeriod(e.target.value as typeof budgetPeriod)}>
+          <select
+            value={lockedPromo ? 'weekly' : budgetPeriod}
+            onChange={(e) => onPeriodChange(e.target.value as typeof budgetPeriod)}
+            disabled={lockedPromo}
+          >
             <option value="daily">daily</option>
             <option value="weekly">weekly</option>
             <option value="monthly">monthly</option>
@@ -495,6 +631,7 @@ export function ClientDetailPage() {
   const [error, setError] = useState('')
   const [busyKill, setBusyKill] = useState(false)
   const [period, setPeriod] = useState<'current' | 'previous'>('current')
+  const [copiedPrompt, setCopiedPrompt] = useState(false)
 
   async function load() {
     if (!id) return
@@ -524,6 +661,16 @@ export function ClientDetailPage() {
   if (loading) return <div className="auth-shell"><p className="auth-copy">Loading…</p></div>
   if (!agency) return <Navigate to="/onboarding" replace />
 
+  const urls = mandateBaseUrls()
+  const promoEnded =
+    row?.fundingSource === 'MANDATE_PROMO' &&
+    row.promoExpiresAt != null &&
+    new Date(row.promoExpiresAt).getTime() < Date.now()
+  const setupPrompt = buildN8nSetupPrompt({
+    mandateKey: `${row?.keyPrefix || 'mdt_live_'}…`,
+    clientName: row?.name,
+  })
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -535,6 +682,19 @@ export function ClientDetailPage() {
             </NavLink>
             <NavLink to="/app/ledger" className={({ isActive }) => (isActive ? 'active' : undefined)}>
               ledger
+            </NavLink>
+            {agency.role === 'ADMIN' && (
+              <>
+                <NavLink to="/app/team" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+                  team
+                </NavLink>
+                <NavLink to="/app/settings" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+                  settings
+                </NavLink>
+              </>
+            )}
+            <NavLink to="/docs" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+              docs
             </NavLink>
           </nav>
         </div>
@@ -550,11 +710,17 @@ export function ClientDetailPage() {
           <>
             <div className="app-title-row">
               <div>
-                <p className="eyebrow left">{row.budgetPeriod.toUpperCase()} CAP</p>
+                <p className="eyebrow left">
+                  {row.fundingSource === 'MANDATE_PROMO' ? 'MANDATE PROMO · ' : ''}
+                  {row.budgetPeriod.toUpperCase()} CAP
+                </p>
                 <h1>{row.name}</h1>
                 <p className="auth-copy">
                   ${formatUsd(row.spendPeriodUsd)} of ${formatUsd(row.capUsd)} · {row.percentUsed.toFixed(1)}% used
-                  {row.killed ? ' · KEY KILLED' : ''}
+                  {row.killed ? ' · KEY STOPPED' : ''}
+                  {row.fundingSource === 'MANDATE_PROMO' && row.promoExpiresAt
+                    ? ` · trial ends ${new Date(row.promoExpiresAt).toLocaleString()}`
+                    : ''}
                 </p>
               </div>
               <div className="app-actions">
@@ -583,6 +749,13 @@ export function ClientDetailPage() {
                 </button>
               </div>
             </div>
+
+            {promoEnded && (
+              <p className="form-error" role="alert">
+                Mandate free credits ended for this client. Add your OpenAI/Anthropic keys in{' '}
+                <Link to="/app/settings">Settings</Link>, then re-enable the key to resume on your own account.
+              </p>
+            )}
 
             <div className="detail-grid">
               <section className="detail-card">
@@ -708,10 +881,48 @@ export function ClientDetailPage() {
             </section>
 
             <section className="detail-card" style={{ marginTop: 20 }}>
-              <h3>n8n base URLs</h3>
-              <pre className="inline-pre">{`OpenAI     ${window.location.origin}/openai/v1
-Anthropic  ${window.location.origin}/anthropic/v1
-API key    ${row.keyPrefix}…`}</pre>
+              <h3>Connect n8n</h3>
+              <p className="auth-copy">
+                Paste these base URLs into your OpenAI/Anthropic credential. Use the Mandate key you copied at creation
+                (prefix <code>{row.keyPrefix}…</code>).
+              </p>
+              <pre className="inline-pre">{`OpenAI     ${urls.openai}
+Anthropic  ${urls.anthropic}
+API key    ${row.keyPrefix}…  (paste full mdt_live_… key)`}</pre>
+              <div className="modal-actions" style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="button-ghost"
+                  onClick={() => {
+                    navigator.clipboard.writeText(urls.openai)
+                  }}
+                >
+                  copy OpenAI URL
+                </button>
+                <button
+                  type="button"
+                  className="button-ghost"
+                  onClick={() => {
+                    navigator.clipboard.writeText(urls.anthropic)
+                  }}
+                >
+                  copy Anthropic URL
+                </button>
+                <button
+                  type="button"
+                  className="button-ghost"
+                  onClick={() => {
+                    navigator.clipboard.writeText(setupPrompt)
+                    setCopiedPrompt(true)
+                    setTimeout(() => setCopiedPrompt(false), 2000)
+                  }}
+                >
+                  {copiedPrompt ? 'copied!' : 'copy setup prompt'}
+                </button>
+                <Link className="button-ghost" to="/docs">
+                  docs
+                </Link>
+              </div>
             </section>
           </>
         )}

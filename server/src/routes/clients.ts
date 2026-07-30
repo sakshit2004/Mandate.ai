@@ -8,6 +8,15 @@ import {
   unblockKey,
   updateVirtualKey,
 } from '../services/litellm.js'
+import {
+  enforcePromoExpiry,
+  enforcePromoExpiryForAgency,
+  isPromoExpired,
+  PROMO_BUDGET_PERIOD,
+  PROMO_BUDGET_USD,
+  PROMO_LOCKED_MESSAGE,
+  promoExpiresAtFromNow,
+} from '../services/promo.js'
 import { mandateErrorBody } from '../utils/errors.js'
 import { budgetDurationForLiteLLM } from '../utils/periods.js'
 import { moneyUsd } from '../utils/money.js'
@@ -33,25 +42,43 @@ const updateSchema = z.object({
   budgetPeriod: z.enum(['daily', 'weekly', 'monthly']).optional(),
 })
 
+function clientPublic(c: {
+  id: string
+  name: string
+  slug: string
+  keyPrefix: string
+  maxBudgetUsd: number
+  budgetPeriod: string
+  fundingSource: 'BYOK' | 'MANDATE_PROMO'
+  promoExpiresAt: Date | null
+  killed: boolean
+  createdAt: Date
+}) {
+  return {
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    keyPrefix: c.keyPrefix,
+    maxBudgetUsd: moneyUsd(c.maxBudgetUsd),
+    budgetPeriod: c.budgetPeriod,
+    fundingSource: c.fundingSource,
+    promoExpiresAt: c.promoExpiresAt?.toISOString() ?? null,
+    killed: c.killed,
+    createdAt: c.createdAt.toISOString(),
+  }
+}
+
 export async function registerClientRoutes(app: FastifyInstance) {
   app.get('/api/clients', async (request, reply) => {
     const agency = await requireAuth(request, reply)
     if (!agency) return
+    await enforcePromoExpiryForAgency(agency.id)
     const clients = await prisma.client.findMany({
       where: { agencyId: agency.id },
       orderBy: { name: 'asc' },
     })
     return {
-      clients: clients.map((c) => ({
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-        keyPrefix: c.keyPrefix,
-        maxBudgetUsd: moneyUsd(c.maxBudgetUsd),
-        budgetPeriod: c.budgetPeriod,
-        killed: c.killed,
-        createdAt: c.createdAt.toISOString(),
-      })),
+      clients: clients.map(clientPublic),
     }
   })
 
@@ -63,6 +90,28 @@ export async function registerClientRoutes(app: FastifyInstance) {
       return reply.code(400).send(mandateErrorBody('BAD_REQUEST', 'Invalid client payload.'))
     }
 
+    const agencyRow = await prisma.agency.findUniqueOrThrow({ where: { id: agency.id } })
+    const hasByok = agencyRow.openaiConfigured || agencyRow.anthropicConfigured
+    const canUsePromo =
+      !hasByok &&
+      agencyRow.fundingMode === 'MANDATE_PROMO' &&
+      !agencyRow.promoClientClaimed
+
+    if (!hasByok && !canUsePromo) {
+      return reply.code(400).send(
+        mandateErrorBody(
+          'BYOK_REQUIRED',
+          'Add your own OpenAI or Anthropic API key before creating another client key.',
+        ),
+      )
+    }
+
+    const usePromo = canUsePromo
+    const maxBudgetUsd = usePromo ? PROMO_BUDGET_USD : parsed.data.maxBudgetUsd
+    const budgetPeriod = usePromo ? PROMO_BUDGET_PERIOD : parsed.data.budgetPeriod
+    const fundingSource = usePromo ? ('MANDATE_PROMO' as const) : ('BYOK' as const)
+    const promoExpiresAt = usePromo ? promoExpiresAtFromNow() : null
+
     let slug = slugify(parsed.data.name)
     if (!slug) slug = `client-${Date.now()}`
     const collision = await prisma.client.findUnique({
@@ -73,41 +122,61 @@ export async function registerClientRoutes(app: FastifyInstance) {
     const alias = `mandate:${agency.id}:${slug}`
     const generated = await generateVirtualKey({
       keyAlias: alias,
-      maxBudget: parsed.data.maxBudgetUsd,
-      budgetDuration: budgetDurationForLiteLLM(parsed.data.budgetPeriod),
-      metadata: { client_name: parsed.data.name, agency_id: agency.id },
+      maxBudget: maxBudgetUsd,
+      budgetDuration: budgetDurationForLiteLLM(budgetPeriod),
+      metadata: { client_name: parsed.data.name, agency_id: agency.id, funding_source: fundingSource },
     })
 
-    const client = await prisma.client.create({
-      data: {
-        agencyId: agency.id,
-        name: parsed.data.name,
-        slug,
-        tokenHash: generated.tokenHash,
-        keyAlias: alias,
-        keyPrefix: generated.key.slice(0, 12),
-        sealedKey: sealSecret(generated.key),
-        maxBudgetUsd: parsed.data.maxBudgetUsd,
-        budgetPeriod: parsed.data.budgetPeriod,
-      },
+    const client = await prisma.$transaction(async (tx) => {
+      if (usePromo) {
+        const claimed = await tx.agency.updateMany({
+          where: { id: agency.id, promoClientClaimed: false },
+          data: { promoClientClaimed: true },
+        })
+        if (claimed.count === 0) {
+          throw new Error('PROMO_ALREADY_CLAIMED')
+        }
+      }
+      return tx.client.create({
+        data: {
+          agencyId: agency.id,
+          name: parsed.data.name,
+          slug,
+          tokenHash: generated.tokenHash,
+          keyAlias: alias,
+          keyPrefix: generated.key.slice(0, 12),
+          sealedKey: sealSecret(generated.key),
+          maxBudgetUsd,
+          budgetPeriod,
+          fundingSource,
+          promoExpiresAt,
+        },
+      })
+    }).catch((err: unknown) => {
+      if (err instanceof Error && err.message === 'PROMO_ALREADY_CLAIMED') {
+        return null
+      }
+      throw err
     })
+
+    if (!client) {
+      return reply.code(400).send(
+        mandateErrorBody(
+          'BYOK_REQUIRED',
+          'Mandate free credits are limited to one client. Add your own provider keys to create more.',
+        ),
+      )
+    }
+
     await recordAuditEvent(agency, 'client.created', 'client', client.id, {
       name: client.name,
       budgetPeriod: client.budgetPeriod,
       maxBudgetUsd: client.maxBudgetUsd,
+      fundingSource: client.fundingSource,
     })
 
     return {
-      client: {
-        id: client.id,
-        name: client.name,
-        slug: client.slug,
-        keyPrefix: client.keyPrefix,
-        maxBudgetUsd: moneyUsd(client.maxBudgetUsd),
-        budgetPeriod: client.budgetPeriod,
-        killed: client.killed,
-        createdAt: client.createdAt.toISOString(),
-      },
+      client: clientPublic(client),
       mandateKey: generated.key,
     }
   })
@@ -123,6 +192,13 @@ export async function registerClientRoutes(app: FastifyInstance) {
     const client = await prisma.client.findFirst({ where: { id, agencyId: agency.id } })
     if (!client) {
       return reply.code(404).send(mandateErrorBody('NOT_FOUND', 'Client not found.'))
+    }
+
+    if (
+      client.fundingSource === 'MANDATE_PROMO' &&
+      (parsed.data.maxBudgetUsd != null || parsed.data.budgetPeriod)
+    ) {
+      return reply.code(400).send(mandateErrorBody('PROMO_LOCKED', PROMO_LOCKED_MESSAGE))
     }
 
     if (parsed.data.maxBudgetUsd != null || parsed.data.budgetPeriod) {
@@ -146,18 +222,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
       },
     })
     await recordAuditEvent(agency, 'client.updated', 'client', updated.id, parsed.data)
-    return {
-      client: {
-        id: updated.id,
-        name: updated.name,
-        slug: updated.slug,
-        keyPrefix: updated.keyPrefix,
-        maxBudgetUsd: moneyUsd(updated.maxBudgetUsd),
-        budgetPeriod: updated.budgetPeriod,
-        killed: updated.killed,
-        createdAt: updated.createdAt.toISOString(),
-      },
-    }
+    return { client: clientPublic(updated) }
   })
 
   app.post('/api/clients/:id/kill', async (request, reply) => {
@@ -181,10 +246,33 @@ export async function registerClientRoutes(app: FastifyInstance) {
     const agency = await requireAuth(request, reply)
     if (!agency) return
     const { id } = request.params as { id: string }
-    const client = await prisma.client.findFirst({ where: { id, agencyId: agency.id } })
+    let client = await prisma.client.findFirst({ where: { id, agencyId: agency.id } })
     if (!client) {
       return reply.code(404).send(mandateErrorBody('NOT_FOUND', 'Client not found.'))
     }
+    client = await enforcePromoExpiry(client)
+
+    if (isPromoExpired(client)) {
+      const agencyRow = await prisma.agency.findUniqueOrThrow({ where: { id: agency.id } })
+      if (!agencyRow.openaiConfigured && !agencyRow.anthropicConfigured) {
+        return reply.code(400).send(
+          mandateErrorBody(
+            'BYOK_REQUIRED',
+            'Trial ended. Add your own OpenAI or Anthropic key in Settings, then re-enable this client.',
+          ),
+        )
+      }
+      await unblockKey(unsealSecret(client.sealedKey))
+      const updated = await prisma.client.update({
+        where: { id: client.id },
+        data: { killed: false, fundingSource: 'BYOK' },
+      })
+      await recordAuditEvent(agency, 'client.reenabled', 'client', updated.id, {
+        convertedFromPromo: true,
+      })
+      return { client: { id: updated.id, killed: updated.killed, name: updated.name } }
+    }
+
     await unblockKey(unsealSecret(client.sealedKey))
     const updated = await prisma.client.update({
       where: { id: client.id },

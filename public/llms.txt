@@ -1,0 +1,19 @@
+# Mandate
+
+> Spend-control proxy for agencies running AI agents. Keep real OpenAI/Anthropic keys encrypted server-side; issue capped `mdt_live_…` keys; point n8n (or any OpenAI-compatible client) at Mandate base URLs.
+
+Base URL (production): https://trymandate.dev
+OpenAI proxy: https://trymandate.dev/openai/v1
+Anthropic proxy: https://trymandate.dev/anthropic/v1
+
+## Docs
+
+- [Human docs](https://trymandate.dev/docs): Quickstart, n8n, errors, free credits
+- [Quickstart (LLM)](https://trymandate.dev/docs/quickstart.md)
+- [n8n setup (LLM)](https://trymandate.dev/docs/n8n.md)
+- [API & auth (LLM)](https://trymandate.dev/docs/api.md)
+- [Errors (LLM)](https://trymandate.dev/docs/errors.md)
+
+## Optional
+
+- [n8n HTML guide](https://trymandate.dev/n8n-setup.html): redirects mindset to /docs; still useful for humans

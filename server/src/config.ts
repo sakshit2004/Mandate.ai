@@ -50,6 +50,8 @@ const envSchema = z.object({
   ),
   EMAIL_CONSOLE: z.preprocess(emptyToUndefined, z.string().optional()),
   PUPPETEER_EXECUTABLE_PATH: z.preprocess(emptyToUndefined, z.string().optional()),
+  PLATFORM_OPENAI_API_KEY: z.preprocess(emptyToUndefined, z.string().min(10).optional()),
+  PLATFORM_ANTHROPIC_API_KEY: z.preprocess(emptyToUndefined, z.string().min(10).optional()),
 })
 
 let parsed: z.infer<typeof envSchema>

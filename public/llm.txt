@@ -1,0 +1,14 @@
+# Mandate — LLM index
+
+Same content as /llms.txt. Prefer https://trymandate.dev/llms.txt.
+
+- Human docs: /docs
+- Quickstart: /docs/quickstart.md
+- n8n: /docs/n8n.md
+- API: /docs/api.md
+- Errors: /docs/errors.md
+
+OpenAI base: https://trymandate.dev/openai/v1
+Anthropic base: https://trymandate.dev/anthropic/v1
+Auth: Authorization: Bearer mdt_live_…  OR  x-api-key: mdt_live_…
+Optional: X-Mandate-Tag for attribution

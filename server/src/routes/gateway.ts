@@ -4,6 +4,7 @@ import { Readable } from 'node:stream'
 import { env } from '../config.js'
 import { prisma } from '../db.js'
 import { estimateCostUsd, getProviderKey, hashToken } from '../services/litellm.js'
+import { enforcePromoExpiry, isPromoExpired } from '../services/promo.js'
 import {
   recordUsageEvent,
   releaseBudgetReservation,
@@ -152,19 +153,29 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
           .send(mandateErrorBody('INVALID_MANDATE_KEY', 'Missing Mandate API key.'))
       }
 
-      const client = await prisma.client.findUnique({
+      const clientRow = await prisma.client.findUnique({
         where: { tokenHash: hashToken(key) },
         include: { agency: true },
       })
-      if (!client) {
+      if (!clientRow) {
         return reply
           .code(401)
           .send(mandateErrorBody('INVALID_MANDATE_KEY', 'Unknown Mandate API key.'))
       }
+      const client = await enforcePromoExpiry(clientRow)
       if (client.agency.status === 'DISABLED') {
         return reply
           .code(403)
           .send(mandateErrorBody('CLIENT_KEY_KILLED', 'This agency workspace is disabled.'))
+      }
+      if (isPromoExpired(client) || (client.killed && client.fundingSource === 'MANDATE_PROMO' && client.promoExpiresAt && client.promoExpiresAt.getTime() < Date.now())) {
+        return reply.code(403).send(
+          mandateErrorBody(
+            'PROMO_TRIAL_ENDED',
+            `Mandate free credits for ${client.name} have ended. Add your own OpenAI or Anthropic key in Settings, then re-enable this client.`,
+            { client: client.name },
+          ),
+        )
       }
       if (client.killed) {
         return reply.code(403).send(
@@ -228,15 +239,16 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
 
       const headers = new Headers()
       if (env.STANDALONE) {
-        const providerKey = await getProviderKey(client.agencyId, provider)
+        const providerKey = await getProviderKey(client.agencyId, provider, {
+          fundingSource: client.fundingSource,
+        })
         if (!providerKey) {
           await releaseBudgetReservation(reservationId)
-          return reply.code(502).send(
-            mandateErrorBody(
-              'UPSTREAM_ERROR',
-              `No ${provider} provider key configured. Add it in agency onboarding.`,
-            ),
-          )
+          const promoHint =
+            client.fundingSource === 'MANDATE_PROMO'
+              ? 'Mandate platform provider keys are not configured. Contact support.'
+              : `No ${provider} provider key configured. Add it in Settings.`
+          return reply.code(502).send(mandateErrorBody('UPSTREAM_ERROR', promoHint))
         }
         if (provider === 'openai') {
           headers.set('Authorization', `Bearer ${providerKey}`)

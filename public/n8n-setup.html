@@ -3,8 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="refresh" content="0; url=/docs#n8n" />
     <meta name="description" content="Connect an n8n workflow to Mandate's OpenAI and Anthropic proxy endpoints." />
     <title>Mandate — n8n setup</title>
+    <link rel="canonical" href="/docs#n8n" />
     <style>
       @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@1,600&display=swap');
       :root { color: #181816; background: #f8f6ef; font-family: 'IBM Plex Sans', sans-serif; --line: #d8d3c5; --muted: #706a5e; --mono: 'IBM Plex Mono', monospace; }
@@ -41,13 +43,13 @@
   </head>
   <body>
     <header>
-      <nav><a class="logo" href="/">▣ mandate</a><a href="/#invite">request beta access →</a></nav>
+      <nav><a class="logo" href="/">▣ mandate</a><a href="/docs">docs →</a></nav>
     </header>
     <main>
-      <p class="eyebrow">N8N SETUP · PRIVATE BETA</p>
+      <p class="eyebrow">N8N SETUP</p>
       <h1>Meter an n8n workflow through Mandate.</h1>
       <p class="lede">Keep the same OpenAI or Anthropic node. Replace its base URL and provider credential with the capped Mandate key for that client.</p>
-      <div class="notice">Before starting: create the client in Mandate, store the real provider credential, set its dollar cap, and copy its <code>mdt_live_…</code> key.</div>
+      <div class="notice">Preferred docs live at <a href="/docs#n8n"><strong>/docs</strong></a>. This page is a short mirror. Create a client in Mandate first (BYOK or one-week free credits), then copy its <code>mdt_live_…</code> key.</div>
 
       <section>
         <h2>1. Create a client credential in n8n</h2>
@@ -57,13 +59,12 @@
           <li>Set the provider-specific base URL below and save the credential.</li>
         </ol>
         <h3>OpenAI</h3>
-        <pre>Base URL   http://localhost:3001/openai/v1
+        <pre>Base URL   https://trymandate.dev/openai/v1
 API key    &lt;Mandate client key from /app&gt;</pre>
         <h3>Anthropic</h3>
-        <pre>Base URL   http://localhost:3001/anthropic/v1
+        <pre>Base URL   https://trymandate.dev/anthropic/v1
 API key    &lt;same Mandate client key&gt;</pre>
-        <p>Optional: set header <code>X-Mandate-Tag</code> to attribute spend (for example <code>intake-sync</code>). Production hosts replace <code>localhost:3001</code> with your Mandate URL.</p>
-        <p>If your n8n node does not expose a base URL field, use the HTTP Request node with the same path, headers, and request body you send to the provider.</p>
+        <p>Local development uses <code>http://localhost:8788/openai/v1</code> (and <code>/anthropic/v1</code>). Optional header: <code>X-Mandate-Tag</code>.</p>
       </section>
 
       <section>
@@ -72,31 +73,18 @@ API key    &lt;same Mandate client key&gt;</pre>
           <li>Execute the model node once with a small prompt.</li>
           <li>Confirm the node succeeds without changing its model or payload.</li>
           <li>Open Mandate and confirm the client total moves within the next polling refresh.</li>
-          <li>Open the event and verify provider, model, input/output tokens, cost, status, and workflow source.</li>
         </ol>
-        <p>Streaming is supported. Mandate injects usage reporting when required so the final token count can be metered.</p>
       </section>
 
       <section>
         <h2>3. Handle spend-control responses</h2>
         <div class="response">
           <div><b>429 · CLIENT_BUDGET_EXCEEDED</b><span>The client has reached its dollar cap. Do not retry automatically.</span></div>
-          <div><b>403 · CLIENT_KEY_KILLED</b><span>The agency used the kill switch. Stop the branch until the key is re-enabled.</span></div>
+          <div><b>403 · CLIENT_KEY_KILLED / PROMO_TRIAL_ENDED</b><span>Key paused or free credits ended. Re-enable after fixing funding.</span></div>
         </div>
-        <p>In n8n, route these statuses to a controlled stop or notification branch. Retrying a blocked request will not reach the provider.</p>
       </section>
 
-      <section>
-        <h2>Done when</h2>
-        <ul class="check">
-          <li>The workflow runs with only the credential and base URL changed.</li>
-          <li>The call appears under the correct client with an exact metered cost.</li>
-          <li>A test cap returns 429 on the next call.</li>
-          <li>Disabling the key returns 403 on the next call.</li>
-        </ul>
-      </section>
-
-      <footer>Need help during beta? <a href="mailto:hello@trymandate.dev">hello@trymandate.dev</a></footer>
+      <footer>Full docs: <a href="/docs">/docs</a> · LLM index: <a href="/llms.txt">llms.txt</a> · <a href="mailto:hello@trymandate.dev">hello@trymandate.dev</a></footer>
     </main>
   </body>
 </html>

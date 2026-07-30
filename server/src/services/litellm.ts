@@ -172,6 +172,7 @@ export async function storeProviderKeys(input: {
       openaiConfigured: input.openaiApiKey ? true : undefined,
       anthropicConfigured: input.anthropicApiKey ? true : undefined,
       setupComplete: input.openaiApiKey || input.anthropicApiKey ? true : undefined,
+      fundingMode: input.openaiApiKey || input.anthropicApiKey ? 'BYOK' : undefined,
     },
   })
 }
@@ -179,7 +180,13 @@ export async function storeProviderKeys(input: {
 export async function getProviderKey(
   agencyId: string,
   provider: 'openai' | 'anthropic',
+  opts?: { fundingSource?: 'BYOK' | 'MANDATE_PROMO' },
 ): Promise<string | null> {
+  if (opts?.fundingSource === 'MANDATE_PROMO') {
+    if (provider === 'openai') return env.PLATFORM_OPENAI_API_KEY ?? null
+    return env.PLATFORM_ANTHROPIC_API_KEY ?? null
+  }
+
   const agency = await prisma.agency.findUnique({ where: { id: agencyId } })
   if (!agency) return null
   if (provider === 'openai' && agency.sealedOpenaiKey) {

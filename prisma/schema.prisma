@@ -23,20 +23,28 @@ enum MembershipRole {
   MEMBER
 }
 
+enum FundingMode {
+  BYOK
+  MANDATE_PROMO
+}
+
 model Agency {
-  id                  String       @id @default(cuid())
-  clerkOrganizationId String?      @unique
+  id                  String        @id @default(cuid())
+  clerkOrganizationId String?       @unique
   name                String
-  timezone            String       @default("America/Denver")
-  status              AgencyStatus @default(ACTIVE)
-  setupComplete       Boolean      @default(false)
-  openaiConfigured    Boolean      @default(false)
-  anthropicConfigured Boolean      @default(false)
+  timezone            String        @default("America/Denver")
+  status              AgencyStatus  @default(ACTIVE)
+  setupComplete       Boolean       @default(false)
+  /// null until admin chooses BYOK vs Mandate promo on onboarding.
+  fundingMode         FundingMode?
+  promoClientClaimed  Boolean       @default(false)
+  openaiConfigured    Boolean       @default(false)
+  anthropicConfigured Boolean       @default(false)
   /// AES-GCM sealed provider keys (standalone mode — no LiteLLM).
   sealedOpenaiKey     String?
   sealedAnthropicKey  String?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
   clients             Client[]
   memberships         AgencyMembership[]
   auditEvents         AuditEvent[]
@@ -86,25 +94,28 @@ model AuditEvent {
 }
 
 model Client {
-  id           String       @id @default(cuid())
-  agencyId     String
-  agency       Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  name         String
-  slug         String
+  id             String       @id @default(cuid())
+  agencyId       String
+  agency         Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
   /// SHA-256 of the Mandate virtual key.
-  tokenHash    String       @unique
-  keyAlias     String       @unique
-  keyPrefix    String
+  tokenHash      String       @unique
+  keyAlias       String       @unique
+  keyPrefix      String
   /// AES-256-GCM sealed Mandate key for kill/re-enable after restarts.
-  sealedKey    String
-  maxBudgetUsd Float
-  budgetPeriod BudgetPeriod @default(monthly)
-  killed       Boolean      @default(false)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  alerts       BudgetAlert[]
-  usageEvents  UsageEvent[]
-  reservations BudgetReservation[]
+  sealedKey      String
+  maxBudgetUsd   Float
+  budgetPeriod   BudgetPeriod @default(monthly)
+  fundingSource  FundingMode  @default(BYOK)
+  /// Set for Mandate promo clients; hard-stop after this time.
+  promoExpiresAt DateTime?
+  killed         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  alerts         BudgetAlert[]
+  usageEvents    UsageEvent[]
+  reservations   BudgetReservation[]
 
   @@unique([agencyId, slug])
   @@index([agencyId])

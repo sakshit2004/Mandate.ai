@@ -71,6 +71,8 @@ export type ClientSpendSummary = {
   killed: boolean
   keyPrefix: string
   budgetPeriod: string
+  fundingSource: 'BYOK' | 'MANDATE_PROMO'
+  promoExpiresAt: string | null
   capUsd: number
   spendTodayUsd: number
   spendPeriodUsd: number
@@ -112,6 +114,8 @@ export async function clientSpendSummaries(
       killed: c.killed,
       keyPrefix: c.keyPrefix,
       budgetPeriod: c.budgetPeriod,
+      fundingSource: c.fundingSource,
+      promoExpiresAt: c.promoExpiresAt?.toISOString() ?? null,
       capUsd,
       spendTodayUsd,
       spendPeriodUsd,

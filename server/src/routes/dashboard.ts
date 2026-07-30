@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '../db.js'
 import { requireAuth } from '../services/auth.js'
+import { enforcePromoExpiryForAgency } from '../services/promo.js'
 import {
   clientBreakdown,
   clientSpendSummaries,
@@ -13,6 +14,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   app.get('/api/dashboard', async (request, reply) => {
     const agency = await requireAuth(request, reply)
     if (!agency) return
+    await enforcePromoExpiryForAgency(agency.id)
     const clients = await clientSpendSummaries(agency.id, agency.timezone)
     return {
       generatedAt: new Date().toISOString(),

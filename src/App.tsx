@@ -526,7 +526,7 @@ function App() {
                 The setup guide covers both provider routes, client credentials, streaming usage,
                 429 and 403 responses, and a one-call verification.
               </p>
-              <a className="button guide-button" href="/n8n-setup.html">
+              <a className="button guide-button" href="/docs#n8n">
                 open n8n setup guide <ArrowRight size={14} />
               </a>
             </div>
@@ -547,8 +547,8 @@ function App() {
         <section className="faq-section shell" id="docs">
           <p className="eyebrow left">FAQ</p>
           <h2>The questions agencies actually ask.</h2>
-          <a className="text-link docs-link" href="/n8n-setup.html">
-            Read the n8n setup guide <ArrowRight size={14} />
+          <a className="text-link docs-link" href="/docs">
+            Read the docs <ArrowRight size={14} />
           </a>
           <div className="faq-list">
             {faqs.map((faq, index) => (
@@ -587,7 +587,7 @@ function App() {
         <div>
           <span>PRODUCT</span>
           <a href="#product">Overview</a>
-          <a href="/n8n-setup.html">n8n setup</a>
+          <a href="/docs">docs</a>
           <a href="/sign-up">Create account</a>
         </div>
         <div>

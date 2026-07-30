@@ -11,6 +11,7 @@ import {
   TeamPage,
 } from './pages/AuthPages'
 import { ClientDetailPage, DashboardPage, LedgerPage } from './pages/DashboardPage'
+import { DocsPage } from './pages/DocsPage'
 
 function RequireAccount({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn, orgId } = useAuth()
@@ -24,6 +25,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<LandingApp />} />
+      <Route path="/docs" element={<DocsPage />} />
       <Route path="/login" element={<Navigate to="/sign-in" replace />} />
       <Route path="/setup" element={<Navigate to="/onboarding" replace />} />
       <Route path="/sign-in/*" element={<SignInPage />} />

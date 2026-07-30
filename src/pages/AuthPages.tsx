@@ -160,6 +160,7 @@ export function OnboardingPage() {
   const { isLoaded, isSignedIn, orgId } = useAuth()
   const { membership } = useOrganization()
   const [timezone, setTimezone] = useState(detectedTimezone)
+  const [step, setStep] = useState<'choose' | 'byok'>('choose')
   const [openaiApiKey, setOpenaiApiKey] = useState('')
   const [anthropicApiKey, setAnthropicApiKey] = useState('')
   const [error, setError] = useState('')
@@ -204,7 +205,15 @@ export function OnboardingPage() {
         if (isMember) {
           throw new Error('Your workspace is still syncing. Please try again in a moment.')
         }
-        await mandateApi.completeOnboarding(timezone)
+        if (current?.agency.fundingMode === 'BYOK' && !current.agency.setupComplete) {
+          if (!cancelled) {
+            setStep('byok')
+            setProvisioned(true)
+          }
+          return
+        }
+        // Provision agency shell (no funding mode yet) so /api/me works.
+        await mandateApi.completeOnboarding({ timezone })
         if (!cancelled) setProvisioned(true)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not provision agency')
@@ -216,18 +225,45 @@ export function OnboardingPage() {
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- provision once per org; timezone submitted on choose
   }, [isSignedIn, membership, navigate, orgId])
 
-  async function onSubmit(e: FormEvent) {
+  async function choosePromo() {
+    setBusy(true)
+    setError('')
+    try {
+      await mandateApi.completeOnboarding({ timezone, fundingMode: 'MANDATE_PROMO' })
+      navigate('/app')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start promo trial')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function chooseByok() {
+    setBusy(true)
+    setError('')
+    try {
+      await mandateApi.completeOnboarding({ timezone, fundingMode: 'BYOK' })
+      setStep('byok')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not continue')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onSubmitByok(e: FormEvent) {
     e.preventDefault()
     if (!openaiApiKey && !anthropicApiKey) {
-      setError('Add at least one provider key, or continue without one.')
+      setError('Add at least one OpenAI or Anthropic API key.')
       return
     }
     setError('')
     setBusy(true)
     try {
-      await mandateApi.completeOnboarding(timezone)
+      await mandateApi.completeOnboarding({ timezone, fundingMode: 'BYOK' })
       await mandateApi.updateProviders({
         openaiApiKey: openaiApiKey || undefined,
         anthropicApiKey: anthropicApiKey || undefined,
@@ -244,12 +280,54 @@ export function OnboardingPage() {
   if (!isSignedIn) return <Navigate to="/sign-in" replace />
   if (!orgId) return <WorkspacePicker />
 
+  if (step === 'byok') {
+    return (
+      <div className="auth-shell">
+        <form className="auth-card" onSubmit={onSubmitByok}>
+          <p className="eyebrow left">BRING YOUR OWN KEYS</p>
+          <h1>Connect a provider</h1>
+          <p className="auth-copy">
+            Paste your OpenAI and/or Anthropic key. Mandate encrypts them before storage. Workflows only ever see capped{' '}
+            <code>mdt_live_…</code> keys.
+          </p>
+          <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/onboarding" />
+          <label>
+            Timezone
+            <select value={timezone} onChange={(e) => setTimezone(e.target.value)} required>
+              {timezoneOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option.replaceAll('_', ' ')}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            OpenAI API key
+            <input value={openaiApiKey} onChange={(e) => setOpenaiApiKey(e.target.value)} placeholder="sk-…" autoComplete="off" />
+          </label>
+          <label>
+            Anthropic API key
+            <input value={anthropicApiKey} onChange={(e) => setAnthropicApiKey(e.target.value)} placeholder="sk-ant-…" autoComplete="off" />
+          </label>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button type="submit" disabled={busy}>{busy ? 'saving…' : 'save and open dashboard'}</button>
+          <button type="button" className="button-ghost" onClick={() => setStep('choose')} disabled={busy}>
+            ← back
+          </button>
+          <p className="auth-footer"><Link to="/">← back to site</Link></p>
+        </form>
+      </div>
+    )
+  }
+
   return (
     <div className="auth-shell">
-      <form className="auth-card" onSubmit={onSubmit}>
+      <div className="auth-card">
         <p className="eyebrow left">AGENCY ONBOARDING</p>
-        <h1>Connect a provider</h1>
-        <p className="auth-copy">Your workspace is ready. Provider keys are encrypted before they are stored.</p>
+        <h1>How will you fund AI spend?</h1>
+        <p className="auth-copy">
+          Choose once. You can always add your own provider keys later in Settings.
+        </p>
         <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/onboarding" />
         <label>
           Timezone
@@ -261,23 +339,18 @@ export function OnboardingPage() {
             ))}
           </select>
         </label>
-        <label>
-          OpenAI API key
-          <input value={openaiApiKey} onChange={(e) => setOpenaiApiKey(e.target.value)} placeholder="sk-…" autoComplete="off" />
-        </label>
-        <label>
-          Anthropic API key
-          <input value={anthropicApiKey} onChange={(e) => setAnthropicApiKey(e.target.value)} placeholder="sk-ant-…" autoComplete="off" />
-        </label>
         {error && <p className="form-error" role="alert">{error}</p>}
-        <button type="submit" disabled={busy || !provisioned}>{busy ? 'saving…' : 'save and open dashboard'}</button>
-        {provisioned && (
-          <button type="button" className="button-ghost" onClick={() => navigate('/app')}>
-            continue without a provider
-          </button>
-        )}
-        <p className="auth-footer"><Link to="/">← back to site</Link></p>
-      </form>
+        <button type="button" disabled={busy || !provisioned} onClick={chooseByok}>
+          Bring your own keys
+        </button>
+        <button type="button" className="button-ghost" disabled={busy || !provisioned} onClick={choosePromo}>
+          Try with Mandate credits ($5 / 7 days)
+        </button>
+        <p className="auth-copy" style={{ marginTop: 12 }}>
+          Mandate credits: one promo client, $5 budget for one week, then the key stops until you add your own keys.
+        </p>
+        <p className="auth-footer"><Link to="/">← back to site</Link> · <Link to="/docs">docs</Link></p>
+      </div>
     </div>
   )
 }
@@ -426,6 +499,9 @@ export function ProviderSettingsPage() {
         <p className="auth-copy">
           OpenAI: {agency.openaiConfigured ? 'configured' : 'not configured'} · Anthropic:{' '}
           {agency.anthropicConfigured ? 'configured' : 'not configured'}
+          {agency.fundingMode === 'MANDATE_PROMO' && !agency.openaiConfigured && !agency.anthropicConfigured
+            ? ' · Add keys here to leave free credits and create more clients.'
+            : ''}
         </p>
         <label>
           New OpenAI API key

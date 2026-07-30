@@ -11,6 +11,9 @@ export type MandateErrorCode =
   | 'BAD_REQUEST'
   | 'INTERNAL_ERROR'
   | 'UPSTREAM_ERROR'
+  | 'BYOK_REQUIRED'
+  | 'PROMO_LOCKED'
+  | 'PROMO_TRIAL_ENDED'
 
 export function mandateErrorBody(
   code: MandateErrorCode,
