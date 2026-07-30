@@ -23,6 +23,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const CANONICAL_HOST = 'trymandate.dev'
 const WWW_HOST = `www.${CANONICAL_HOST}`
 
+/** Decode Clerk Frontend API host from pk_test_/pk_live_ publishable key. */
+function clerkFrontendApiOrigin(publishableKey: string): string | null {
+  const encoded = publishableKey.replace(/^pk_(test|live)_/, '')
+  if (!encoded) return null
+  try {
+    const padded = encoded + '='.repeat((4 - (encoded.length % 4)) % 4)
+    const decoded = Buffer.from(padded, 'base64').toString('utf8').replace(/\$$/, '')
+    if (!decoded || decoded.includes('/') || decoded.includes(' ')) return null
+    return `https://${decoded}`
+  } catch {
+    return null
+  }
+}
+
 export async function buildApp(opts: { withStatic?: boolean } = {}) {
   const app = Fastify({
     logger: true,
@@ -61,6 +75,14 @@ export async function buildApp(opts: { withStatic?: boolean } = {}) {
     origin: env.APP_ORIGINS,
     credentials: false,
   })
+
+  const clerkFapiOrigin = clerkFrontendApiOrigin(env.CLERK_PUBLISHABLE_KEY)
+  const clerkScriptConnectFrame = [
+    'https://*.clerk.accounts.dev',
+    'https://*.clerk.com',
+    ...(clerkFapiOrigin ? [clerkFapiOrigin] : []),
+  ]
+
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
@@ -68,24 +90,22 @@ export async function buildApp(opts: { withStatic?: boolean } = {}) {
         scriptSrc: [
           "'self'",
           "'unsafe-inline'",
-          'https://*.clerk.accounts.dev',
-          'https://*.clerk.com',
+          ...clerkScriptConnectFrame,
           'https://challenges.cloudflare.com',
         ],
         connectSrc: [
           "'self'",
           ...env.APP_ORIGINS,
-          'https://*.clerk.accounts.dev',
-          'https://*.clerk.com',
+          ...clerkScriptConnectFrame,
           'https://api.clerk.com',
         ],
         imgSrc: ["'self'", 'data:', 'https:'],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
         workerSrc: ["'self'", 'blob:'],
         frameSrc: [
           "'self'",
-          'https://*.clerk.accounts.dev',
-          'https://*.clerk.com',
+          ...clerkScriptConnectFrame,
           'https://challenges.cloudflare.com',
         ],
       },
