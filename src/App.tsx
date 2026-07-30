@@ -125,7 +125,7 @@ function DashboardPreview() {
           <i />
           <i />
         </div>
-        <span>app.mandate.dev · fieldnote automation</span>
+        <span>trymandate.dev · fieldnote automation</span>
         <b>
           <i /> metering live · $412.86 this week
         </b>
@@ -491,7 +491,7 @@ function App() {
             </div>
             <pre>
               <code>
-                {`# n8n OpenAI credential\nBase URL  https://api.mandate.dev/openai/v1\nAPI key   mdt_live_harbor_••••\n\n# Anthropic: /anthropic/v1 · no workflow rewrite`}
+                {`# n8n OpenAI credential\nBase URL  https://trymandate.dev/openai/v1\nAPI key   mdt_live_harbor_••••\n\n# Anthropic: /anthropic/v1 · no workflow rewrite`}
               </code>
             </pre>
           </div>
@@ -592,7 +592,7 @@ function App() {
         </div>
         <div>
           <span>COMPANY</span>
-          <a href="mailto:hello@mandate.dev">Contact</a>
+          <a href="mailto:hello@trymandate.dev">Contact</a>
           <a href="#privacy">Privacy</a>
           <a href="#terms">Terms</a>
         </div>

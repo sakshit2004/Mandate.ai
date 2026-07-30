@@ -20,12 +20,21 @@ import { mandateErrorBody } from './utils/errors.js'
 import { runBudgetAlertPass } from './workers/budget-alerts.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const CANONICAL_HOST = 'trymandate.dev'
+const WWW_HOST = `www.${CANONICAL_HOST}`
 
 export async function buildApp(opts: { withStatic?: boolean } = {}) {
   const app = Fastify({
     logger: true,
     bodyLimit: 10 * 1024 * 1024,
     trustProxy: env.NODE_ENV === 'production' ? 1 : false,
+  })
+
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.hostname.toLowerCase().replace(/\.$/, '') !== WWW_HOST) return
+
+    const requestTarget = request.raw.url?.startsWith('/') ? request.raw.url : '/'
+    return reply.code(308).redirect(`https://${CANONICAL_HOST}${requestTarget}`)
   })
 
   // Register first so static/SPA fallback can never shadow it (Railway healthcheck).

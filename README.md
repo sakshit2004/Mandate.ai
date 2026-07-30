@@ -68,21 +68,23 @@ emails do not point at localhost or Clerk's Account Portal.
 | `CLERK_PUBLISHABLE_KEY` | production Clerk publishable key |
 | `VITE_CLERK_PUBLISHABLE_KEY` | same public key, available during the Docker build |
 | `CLERK_WEBHOOK_SIGNING_SECRET` | signing secret for `/api/webhooks/clerk` |
-| `APP_ORIGINS` | exact public app origin |
+| `PUBLIC_BASE_URL` | `https://trymandate.dev` |
+| `APP_ORIGINS` | `https://trymandate.dev` |
 | `STANDALONE` | `1` |
 | `AGENCY_NAME` | your agency name |
 | `ALERT_EMAIL_TO` | optional ops email |
 
-5. Generate a public domain on the service.  
-   `PUBLIC_BASE_URL` is auto-detected from `RAILWAY_PUBLIC_DOMAIN`.
-6. In Clerk, add the Railway domain as an allowed origin/redirect and create the production
-   webhook at `https://YOUR-APP.up.railway.app/api/webhooks/clerk`.
-7. Open `https://YOUR-APP.up.railway.app/sign-up`.
+5. Under **Public Networking**, add `trymandate.dev` and `www.trymandate.dev` as custom domains.
+   Add each CNAME/ALIAS and TXT verification record Railway provides to the domain's DNS.
+6. In Clerk, allow `https://trymandate.dev` as an origin/redirect. Keep the existing production
+   webhook active during the cutover; a new endpoint can use
+   `https://trymandate.dev/api/webhooks/clerk`.
+7. Open `https://trymandate.dev/sign-up`.
 
 If deploy fails on **Network › Healthcheck**, open **Deploy Logs** and look for `FATAL:` — usually
 a missing Clerk/encryption variable or unlinked `DATABASE_URL`.
 
-**n8n OpenAI base URL:** `https://YOUR-APP.up.railway.app/openai/v1`
+**n8n OpenAI base URL:** `https://trymandate.dev/openai/v1`
 
 `Dockerfile` + `railway.toml` handle build, migrate-on-boot, and health at `/health`.
 

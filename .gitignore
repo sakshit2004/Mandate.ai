@@ -15,3 +15,5 @@ dev.db-journal
 coverage/
 test-results/
 playwright-report/
+
+.env.production.clerk
