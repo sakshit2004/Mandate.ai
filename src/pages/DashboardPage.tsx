@@ -4,7 +4,7 @@ import { Download, Power, Plus, RefreshCw } from 'lucide-react'
 import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react'
 import { Agency, formatUsd, mandateApi, SpendRow, UsageLogRow } from '../api'
 import { BrandLogo } from '../BrandLogo'
-import { buildN8nSetupPrompt, mandateBaseUrls } from '../setupPrompt'
+import { buildSetupPrompt, mandateBaseUrls } from '../setupPrompt'
 import { useAgency } from './AuthPages'
 
 function AppNav({ agencyName, role }: { agencyName: string; role: 'ADMIN' | 'MEMBER' }) {
@@ -123,7 +123,7 @@ export function DashboardPage() {
         )}
         {agency.fundingMode === 'MANDATE_PROMO' && !agency.openaiConfigured && !agency.anthropicConfigured && (
           <p className="auth-copy">
-            You are on Mandate free credits: one client, $5 for 7 days. Add your own keys in{' '}
+            Your promo clients draw from the shared $5 pool for up to 7 days each. Add your own keys in{' '}
             <Link to="/app/settings">Settings</Link> anytime to create more clients or continue after the trial.
           </p>
         )}
@@ -136,7 +136,10 @@ export function DashboardPage() {
 
         {rows.length === 0 ? (
           <div className="empty-state">
-            <p>No client keys yet. Create one, point n8n at Mandate, and watch spend move. See <Link to="/docs">docs</Link>.</p>
+            <p>
+              No client keys yet. Create one, point any compatible AI tool or backend at Mandate,
+              and watch spend move. See <Link to="/docs">docs</Link>.
+            </p>
           </div>
         ) : (
           <div className="spend-table-wrap">
@@ -200,7 +203,7 @@ export function DashboardPage() {
 
 function KeyRevealPanel({ mandateKey, onDismiss, clientName }: { mandateKey: string; onDismiss: () => void; clientName?: string }) {
   const urls = mandateBaseUrls()
-  const prompt = buildN8nSetupPrompt({ mandateKey, clientName })
+  const prompt = buildSetupPrompt({ mandateKey, clientName })
   return (
     <div className="key-reveal" role="status">
       <strong>Copy this Mandate key now — it won’t be shown again.</strong>
@@ -217,7 +220,7 @@ function KeyRevealPanel({ mandateKey, onDismiss, clientName }: { mandateKey: str
         </button>
       </div>
       <p className="auth-copy" style={{ marginTop: 12 }}>
-        In n8n, set the credential base URL and paste this key:
+        In your AI tool, SDK, agent, or backend, set the provider base URL and paste this key:
       </p>
       <pre className="inline-pre">{`OpenAI     ${urls.openai}
 Anthropic  ${urls.anthropic}
@@ -463,28 +466,42 @@ function CreateClientModal({
   onProvidersSaved: () => void
 }) {
   const hasByok = agency.openaiConfigured || agency.anthropicConfigured
-  const promoEligible =
-    !hasByok && agency.fundingMode === 'MANDATE_PROMO' && !agency.promoClientClaimed
-  const needsInlineByok = !hasByok && !promoEligible
+  const initialFundingSource: 'BYOK' | 'MANDATE_PROMO' =
+    agency.fundingMode === 'MANDATE_PROMO' || !hasByok
+      ? 'MANDATE_PROMO'
+      : 'BYOK'
 
   const [name, setName] = useState('')
-  const [maxBudgetUsd, setMaxBudgetUsd] = useState(promoEligible ? 5 : 50)
+  const [fundingSource, setFundingSource] = useState<'BYOK' | 'MANDATE_PROMO'>(
+    initialFundingSource,
+  )
+  const [maxBudgetUsd, setMaxBudgetUsd] = useState(initialFundingSource === 'MANDATE_PROMO' ? 5 : 50)
   const [budgetPeriod, setBudgetPeriod] = useState<'daily' | 'weekly' | 'monthly'>(
-    promoEligible ? 'weekly' : 'monthly',
+    initialFundingSource === 'MANDATE_PROMO' ? 'weekly' : 'monthly',
   )
   const [openaiApiKey, setOpenaiApiKey] = useState('')
   const [anthropicApiKey, setAnthropicApiKey] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [byokReady, setByokReady] = useState(hasByok)
+  const usingPromo = fundingSource === 'MANDATE_PROMO'
+  const needsInlineByok = !usingPromo && !byokReady
 
   useEffect(() => {
     setByokReady(hasByok)
-    if (hasByok && promoEligible) {
-      // agency upgraded mid-modal
-      setMaxBudgetUsd((v) => (v === 5 ? 50 : v))
+  }, [hasByok])
+
+  function chooseFundingSource(next: 'BYOK' | 'MANDATE_PROMO') {
+    setFundingSource(next)
+    setError('')
+    if (next === 'MANDATE_PROMO') {
+      setMaxBudgetUsd(5)
+      setBudgetPeriod('weekly')
+    } else {
+      setMaxBudgetUsd(50)
+      setBudgetPeriod('monthly')
     }
-  }, [hasByok, promoEligible])
+  }
 
   async function saveByok() {
     if (!openaiApiKey && !anthropicApiKey) {
@@ -503,9 +520,9 @@ function CreateClientModal({
   }
 
   function onBudgetChange(value: number) {
-    if (promoEligible && !byokReady) {
+    if (usingPromo) {
       setError(
-        'Custom budgets are only available with your own provider keys. Mandate free credits are $5 for one week.',
+        'Custom budgets are only available with your own provider keys. Promo usage draws from one shared $5 pool.',
       )
       return
     }
@@ -514,9 +531,9 @@ function CreateClientModal({
   }
 
   function onPeriodChange(value: 'daily' | 'weekly' | 'monthly') {
-    if (promoEligible && !byokReady) {
+    if (usingPromo) {
       setError(
-        'Custom periods are only available with your own provider keys. Mandate free credits are $5 for one week.',
+        'Custom periods are only available with your own provider keys. Promo usage draws from one shared $5 pool.',
       )
       return
     }
@@ -535,8 +552,9 @@ function CreateClientModal({
       }
       const res = await mandateApi.createClient({
         name,
-        maxBudgetUsd: promoEligible && !byokReady ? 5 : maxBudgetUsd,
-        budgetPeriod: promoEligible && !byokReady ? 'weekly' : budgetPeriod,
+        maxBudgetUsd: usingPromo ? 5 : maxBudgetUsd,
+        budgetPeriod: usingPromo ? 'weekly' : budgetPeriod,
+        fundingSource,
       })
       onCreated(res.mandateKey)
     } catch (err) {
@@ -546,21 +564,46 @@ function CreateClientModal({
     }
   }
 
-  const lockedPromo = promoEligible && !byokReady
-
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <form className="auth-card modal-card" onSubmit={onSubmit}>
         <p className="eyebrow left">NEW CLIENT KEY</p>
         <h2>Cap a client</h2>
-        {lockedPromo && (
+        <fieldset className="funding-choice">
+          <legend>How should this client be funded?</legend>
+          <button
+            type="button"
+            className={usingPromo ? 'funding-option selected' : 'funding-option'}
+            onClick={() => chooseFundingSource('MANDATE_PROMO')}
+          >
+            <span>
+              <strong>Use Mandate promo</strong>
+              <small>Shared $5 pool · up to 7 days · no provider key needed</small>
+            </span>
+            <b>{usingPromo ? 'selected' : 'available'}</b>
+          </button>
+          <button
+            type="button"
+            className={!usingPromo ? 'funding-option selected' : 'funding-option'}
+            onClick={() => chooseFundingSource('BYOK')}
+          >
+            <span>
+              <strong>Bring your own keys</strong>
+              <small>Use OpenAI or Anthropic · choose your budget and period</small>
+            </span>
+            <b>{!usingPromo ? 'selected' : hasByok ? 'configured' : 'add key'}</b>
+          </button>
+        </fieldset>
+        {usingPromo && (
           <p className="auth-copy">
-            Mandate free credits: budget locked at <strong>$5 / week</strong> for 7 days. One promo client only.
+            Promo budget and period are locked. All promo clients across all agencies share $5 total.
           </p>
         )}
-        {needsInlineByok && (
+        {!usingPromo && !hasByok && (
           <p className="auth-copy">
-            Your promo client is used. Add your own OpenAI or Anthropic key to create another capped client.
+            {agency.role === 'ADMIN'
+              ? 'Add one provider key below. It is encrypted before storage and never exposed to the client.'
+              : 'Ask a workspace admin to add an OpenAI or Anthropic key in Settings.'}
           </p>
         )}
         <label>
@@ -585,18 +628,18 @@ function CreateClientModal({
             type="number"
             min={0.01}
             step={0.01}
-            value={lockedPromo ? 5 : maxBudgetUsd}
+            value={usingPromo ? 5 : maxBudgetUsd}
             onChange={(e) => onBudgetChange(Number(e.target.value))}
-            readOnly={lockedPromo}
+            readOnly={usingPromo}
             required
           />
         </label>
         <label>
           Period
           <select
-            value={lockedPromo ? 'weekly' : budgetPeriod}
+            value={usingPromo ? 'weekly' : budgetPeriod}
             onChange={(e) => onPeriodChange(e.target.value as typeof budgetPeriod)}
-            disabled={lockedPromo}
+            disabled={usingPromo}
           >
             <option value="daily">daily</option>
             <option value="weekly">weekly</option>
@@ -606,7 +649,9 @@ function CreateClientModal({
         {error && <p className="form-error">{error}</p>}
         <div className="modal-actions">
           <button type="button" className="button-ghost" onClick={onClose}>cancel</button>
-          <button type="submit" disabled={busy}>{busy ? 'creating…' : 'create key'}</button>
+          <button type="submit" disabled={busy || (needsInlineByok && agency.role !== 'ADMIN')}>
+            {busy ? 'creating…' : 'create key'}
+          </button>
         </div>
       </form>
     </div>
@@ -658,7 +703,7 @@ export function ClientDetailPage() {
     row?.fundingSource === 'MANDATE_PROMO' &&
     row.promoExpiresAt != null &&
     new Date(row.promoExpiresAt).getTime() < Date.now()
-  const setupPrompt = buildN8nSetupPrompt({
+  const setupPrompt = buildSetupPrompt({
     mandateKey: `${row?.keyPrefix || 'mdt_live_'}…`,
     clientName: row?.name,
   })
@@ -873,10 +918,11 @@ export function ClientDetailPage() {
             </section>
 
             <section className="detail-card" style={{ marginTop: 20 }}>
-              <h3>Connect n8n</h3>
+              <h3>Connect your AI stack</h3>
               <p className="auth-copy">
-                Paste these base URLs into your OpenAI/Anthropic credential. Use the Mandate key you copied at creation
-                (prefix <code>{row.keyPrefix}…</code>).
+                Paste these base URLs into any compatible OpenAI/Anthropic SDK, agent, backend, or
+                automation credential. Use the Mandate key you copied at creation (prefix{' '}
+                <code>{row.keyPrefix}…</code>).
               </p>
               <pre className="inline-pre">{`OpenAI     ${urls.openai}
 Anthropic  ${urls.anthropic}

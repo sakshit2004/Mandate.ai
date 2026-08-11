@@ -34,6 +34,7 @@ const createSchema = z.object({
   name: z.string().min(2).max(120),
   maxBudgetUsd: z.number().positive().max(1_000_000),
   budgetPeriod: z.enum(['daily', 'weekly', 'monthly']).default('monthly'),
+  fundingSource: z.enum(['BYOK', 'MANDATE_PROMO']),
 })
 
 const updateSchema = z.object({
@@ -68,9 +69,12 @@ function clientPublic(c: {
   }
 }
 
-export async function registerClientRoutes(app: FastifyInstance) {
+export async function registerClientRoutes(
+  app: FastifyInstance,
+  resolveAuth: typeof requireAuth = requireAuth,
+) {
   app.get('/api/clients', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+    const agency = await resolveAuth(request, reply)
     if (!agency) return
     await enforcePromoExpiryForAgency(agency.id)
     const clients = await prisma.client.findMany({
@@ -83,7 +87,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
   })
 
   app.post('/api/clients', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+    const agency = await resolveAuth(request, reply)
     if (!agency) return
     const parsed = createSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -92,21 +96,17 @@ export async function registerClientRoutes(app: FastifyInstance) {
 
     const agencyRow = await prisma.agency.findUniqueOrThrow({ where: { id: agency.id } })
     const hasByok = agencyRow.openaiConfigured || agencyRow.anthropicConfigured
-    const canUsePromo =
-      !hasByok &&
-      agencyRow.fundingMode === 'MANDATE_PROMO' &&
-      !agencyRow.promoClientClaimed
+    const usePromo = parsed.data.fundingSource === 'MANDATE_PROMO'
 
-    if (!hasByok && !canUsePromo) {
+    if (!usePromo && !hasByok) {
       return reply.code(400).send(
         mandateErrorBody(
           'BYOK_REQUIRED',
-          'Add your own OpenAI or Anthropic API key before creating another client key.',
+          'Add your own OpenAI or Anthropic API key, or choose the Mandate promo if it is still available.',
         ),
       )
     }
 
-    const usePromo = canUsePromo
     const maxBudgetUsd = usePromo ? PROMO_BUDGET_USD : parsed.data.maxBudgetUsd
     const budgetPeriod = usePromo ? PROMO_BUDGET_PERIOD : parsed.data.budgetPeriod
     const fundingSource = usePromo ? ('MANDATE_PROMO' as const) : ('BYOK' as const)
@@ -127,46 +127,21 @@ export async function registerClientRoutes(app: FastifyInstance) {
       metadata: { client_name: parsed.data.name, agency_id: agency.id, funding_source: fundingSource },
     })
 
-    const client = await prisma.$transaction(async (tx) => {
-      if (usePromo) {
-        const claimed = await tx.agency.updateMany({
-          where: { id: agency.id, promoClientClaimed: false },
-          data: { promoClientClaimed: true },
-        })
-        if (claimed.count === 0) {
-          throw new Error('PROMO_ALREADY_CLAIMED')
-        }
-      }
-      return tx.client.create({
-        data: {
-          agencyId: agency.id,
-          name: parsed.data.name,
-          slug,
-          tokenHash: generated.tokenHash,
-          keyAlias: alias,
-          keyPrefix: generated.key.slice(0, 12),
-          sealedKey: sealSecret(generated.key),
-          maxBudgetUsd,
-          budgetPeriod,
-          fundingSource,
-          promoExpiresAt,
-        },
-      })
-    }).catch((err: unknown) => {
-      if (err instanceof Error && err.message === 'PROMO_ALREADY_CLAIMED') {
-        return null
-      }
-      throw err
+    const client = await prisma.client.create({
+      data: {
+        agencyId: agency.id,
+        name: parsed.data.name,
+        slug,
+        tokenHash: generated.tokenHash,
+        keyAlias: alias,
+        keyPrefix: generated.key.slice(0, 12),
+        sealedKey: sealSecret(generated.key),
+        maxBudgetUsd,
+        budgetPeriod,
+        fundingSource,
+        promoExpiresAt,
+      },
     })
-
-    if (!client) {
-      return reply.code(400).send(
-        mandateErrorBody(
-          'BYOK_REQUIRED',
-          'Mandate free credits are limited to one client. Add your own provider keys to create more.',
-        ),
-      )
-    }
 
     await recordAuditEvent(agency, 'client.created', 'client', client.id, {
       name: client.name,
@@ -182,7 +157,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
   })
 
   app.patch('/api/clients/:id', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+    const agency = await resolveAuth(request, reply)
     if (!agency) return
     const { id } = request.params as { id: string }
     const parsed = updateSchema.safeParse(request.body)
@@ -226,7 +201,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
   })
 
   app.post('/api/clients/:id/kill', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+    const agency = await resolveAuth(request, reply)
     if (!agency) return
     const { id } = request.params as { id: string }
     const client = await prisma.client.findFirst({ where: { id, agencyId: agency.id } })
@@ -243,7 +218,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
   })
 
   app.post('/api/clients/:id/unkill', async (request, reply) => {
-    const agency = await requireAuth(request, reply)
+    const agency = await resolveAuth(request, reply)
     if (!agency) return
     const { id } = request.params as { id: string }
     let client = await prisma.client.findFirst({ where: { id, agencyId: agency.id } })

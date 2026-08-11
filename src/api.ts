@@ -149,6 +149,7 @@ export const mandateApi = {
     name: string
     maxBudgetUsd: number
     budgetPeriod: 'daily' | 'weekly' | 'monthly'
+    fundingSource: 'BYOK' | 'MANDATE_PROMO'
   }) =>
     api<{ client: ClientRow; mandateKey: string }>('/api/clients', {
       method: 'POST',

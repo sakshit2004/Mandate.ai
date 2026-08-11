@@ -84,7 +84,11 @@ emails do not point at localhost or Clerk's Account Portal.
 If deploy fails on **Network › Healthcheck**, open **Deploy Logs** and look for `FATAL:` — usually
 a missing Clerk/encryption variable or unlinked `DATABASE_URL`.
 
-**n8n OpenAI base URL:** `https://trymandate.dev/openai/v1`
+**Any OpenAI-compatible client:** set its base URL to `https://trymandate.dev/openai/v1`
+
+**Any Anthropic-compatible client:** set its base URL to `https://trymandate.dev/anthropic/v1`
+
+n8n is one supported example; any SDK, agent, backend, automation, or HTTP client that allows a custom provider base URL can use Mandate.
 
 `Dockerfile` + `railway.toml` handle build, migrate-on-boot, and health at `/health`.
 

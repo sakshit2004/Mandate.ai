@@ -2,10 +2,11 @@ import type { Client, FundingMode } from '@prisma/client'
 import { prisma } from '../db.js'
 
 export const PROMO_BUDGET_USD = 5
+export const PROMO_SHARED_POOL_USD = 5
 export const PROMO_BUDGET_PERIOD = 'weekly' as const
 export const PROMO_TRIAL_DAYS = 7
 export const PROMO_LOCKED_MESSAGE =
-  'Custom budgets and periods are only available with your own provider keys. Mandate free credits are $5 for one week.'
+  'Custom budgets and periods are only available with your own provider keys. Mandate free credits draw from one shared $5 pool and expire after one week.'
 
 export function promoExpiresAtFromNow(now = new Date()): Date {
   return new Date(now.getTime() + PROMO_TRIAL_DAYS * 24 * 60 * 60 * 1000)

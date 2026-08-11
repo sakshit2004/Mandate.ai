@@ -122,33 +122,37 @@ model Client {
 }
 
 model BudgetReservation {
-  id             String   @id
+  id             String      @id
   clientId       String
-  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client         Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fundingSource  FundingMode @default(BYOK)
   budgetWindowId String
   amountUsd      Float
   expiresAt      DateTime
-  createdAt      DateTime @default(now())
+  createdAt      DateTime    @default(now())
 
   @@index([clientId, budgetWindowId, expiresAt])
+  @@index([fundingSource, expiresAt])
 }
 
 model UsageEvent {
-  id        String   @id @default(cuid())
-  requestId String   @unique
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  ts        DateTime @default(now())
-  provider  String
-  model     String
-  tokensIn  Int      @default(0)
-  tokensOut Int      @default(0)
-  costUsd   Float    @default(0)
-  status    String   @default("success")
-  tag       String?
-  createdAt DateTime @default(now())
+  id            String      @id @default(cuid())
+  requestId     String      @unique
+  clientId      String
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fundingSource FundingMode @default(BYOK)
+  ts            DateTime    @default(now())
+  provider      String
+  model         String
+  tokensIn      Int         @default(0)
+  tokensOut     Int         @default(0)
+  costUsd       Float       @default(0)
+  status        String      @default("success")
+  tag           String?
+  createdAt     DateTime    @default(now())
 
   @@index([clientId, ts])
+  @@index([fundingSource])
   @@index([ts])
 }
 

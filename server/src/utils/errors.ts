@@ -14,6 +14,7 @@ export type MandateErrorCode =
   | 'BYOK_REQUIRED'
   | 'PROMO_LOCKED'
   | 'PROMO_TRIAL_ENDED'
+  | 'PROMO_POOL_EXHAUSTED'
 
 export function mandateErrorBody(
   code: MandateErrorCode,

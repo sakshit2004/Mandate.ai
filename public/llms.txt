@@ -1,6 +1,6 @@
 # Mandate
 
-> Spend-control proxy for agencies running AI agents. Keep real OpenAI/Anthropic keys encrypted server-side; issue capped `mdt_live_…` keys; point n8n (or any OpenAI-compatible client) at Mandate base URLs.
+> Tool-agnostic spend-control proxy for agencies running AI agents. Keep real OpenAI/Anthropic keys encrypted server-side; issue capped `mdt_live_…` keys; point any compatible SDK, agent, backend, automation, or HTTP client at Mandate base URLs.
 
 Base URL (production): https://trymandate.dev
 OpenAI proxy: https://trymandate.dev/openai/v1
@@ -11,7 +11,8 @@ Anthropic proxy: https://trymandate.dev/anthropic/v1
 - [Full guide](https://trymandate.dev/docs/guide.md) (also rendered at /docs)
 - [Index](https://trymandate.dev/docs/index.md)
 - [Quickstart](https://trymandate.dev/docs/quickstart.md)
-- [n8n setup](https://trymandate.dev/docs/n8n.md)
+- [Universal setup](https://trymandate.dev/docs/guide.md#universal-setup)
+- [n8n example](https://trymandate.dev/docs/n8n.md)
 - [API & auth](https://trymandate.dev/docs/api.md)
 - [Errors](https://trymandate.dev/docs/errors.md)
 - [Free credits](https://trymandate.dev/docs/promo.md)

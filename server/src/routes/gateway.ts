@@ -4,7 +4,11 @@ import { Readable } from 'node:stream'
 import { env } from '../config.js'
 import { prisma } from '../db.js'
 import { estimateCostUsd, getProviderKey, hashToken } from '../services/litellm.js'
-import { enforcePromoExpiry, isPromoExpired } from '../services/promo.js'
+import {
+  enforcePromoExpiry,
+  isPromoExpired,
+  PROMO_SHARED_POOL_USD,
+} from '../services/promo.js'
 import {
   recordUsageEvent,
   releaseBudgetReservation,
@@ -218,16 +222,30 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
         estimatedInputTokens,
         Number.isFinite(requestedOutputTokens) ? requestedOutputTokens : 4096,
       )
-      const reserved = await reserveClientBudget({
+      const reservation = await reserveClientBudget({
         reservationId,
         clientId: client.id,
         budgetWindowId: period.windowId,
         start: period.start,
         end: period.end,
         capUsd: moneyUsd(client.maxBudgetUsd),
-        amountUsd: Math.max(0.01, estimatedCost * 1.25),
+        amountUsd: Math.max(
+          client.fundingSource === 'MANDATE_PROMO' ? 0.000001 : 0.01,
+          estimatedCost * 1.25,
+        ),
+        fundingSource: client.fundingSource,
+        sharedPromoCapUsd:
+          client.fundingSource === 'MANDATE_PROMO' ? PROMO_SHARED_POOL_USD : undefined,
       })
-      if (!reserved) {
+      if (reservation === 'shared_promo_exhausted') {
+        return reply.code(429).send(
+          mandateErrorBody(
+            'PROMO_POOL_EXHAUSTED',
+            'The shared $5 Mandate promo pool has been used. Add your own OpenAI or Anthropic key to continue.',
+          ),
+        )
+      }
+      if (reservation === 'client_budget_exceeded') {
         return reply.code(429).send(
           mandateErrorBody(
             'CLIENT_BUDGET_EXCEEDED',
@@ -305,6 +323,7 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
           requestId,
           reservationId,
           clientId: client.id,
+          fundingSource: client.fundingSource,
           provider,
           model,
           tokensIn: 0,
@@ -336,6 +355,7 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
           requestId,
           reservationId,
           clientId: client.id,
+          fundingSource: client.fundingSource,
           provider,
           model,
           tokensIn,
@@ -360,6 +380,7 @@ export async function registerGatewayRoutes(app: FastifyInstance) {
         requestId,
         reservationId,
         clientId: client.id,
+        fundingSource: client.fundingSource,
         provider,
         model,
         tokensIn: usage.tokensIn,

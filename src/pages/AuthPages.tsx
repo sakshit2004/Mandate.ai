@@ -356,10 +356,10 @@ export function OnboardingPage() {
           Bring your own keys
         </button>
         <button type="button" className="button-ghost" disabled={busy || !provisioned} onClick={choosePromo}>
-          Try with Mandate credits ($5 / 7 days)
+          Try with Mandate credits (shared $5 pool)
         </button>
         <p className="auth-copy" style={{ marginTop: 12 }}>
-          Mandate credits: one promo client, $5 budget for one week, then the key stops until you add your own keys.
+          All promo clients across all agencies share $5 of usage overall. Each promo key lasts up to 7 days or until the shared pool is used.
         </p>
         <p className="auth-footer"><Link to="/">← back to site</Link> · <Link to="/docs">docs</Link></p>
       </div>

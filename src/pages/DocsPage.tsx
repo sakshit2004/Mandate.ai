@@ -9,7 +9,7 @@ const SIDEBAR = [
     label: 'Guides',
     items: [
       { id: 'quickstart', title: 'Quickstart' },
-      { id: 'n8n-setup', title: 'n8n setup' },
+      { id: 'universal-setup', title: 'Connect any tool' },
       { id: 'free-credits', title: 'Free credits' },
     ],
   },

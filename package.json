@@ -22,7 +22,8 @@
     "docker:up": "docker compose up -d postgres",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "validate:promo": "tsx scripts/full-promo-validation.ts"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.9",

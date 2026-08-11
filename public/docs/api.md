@@ -7,7 +7,7 @@
 
 Production: `https://trymandate.dev/openai/v1` and `https://trymandate.dev/anthropic/v1`.
 
-## Authentication (client / workflow)
+## Authentication (AI client / workflow)
 
 Send the Mandate virtual key:
 
@@ -24,14 +24,14 @@ x-api-key: mdt_live_…
 Optional attribution header:
 
 ```
-X-Mandate-Tag: workflow-name
+X-Mandate-Tag: agent-or-workflow-name
 ```
 
 ## Agency dashboard API (Clerk session)
 
-Authenticated browser/app calls use Clerk Bearer tokens against `/api/*` (clients, dashboard, usage, providers). Not for n8n model calls.
+Authenticated Mandate dashboard calls use Clerk Bearer tokens against `/api/*` (clients, dashboard, usage, providers). Model calls from any SDK, agent, backend, automation, or HTTP client use the `mdt_live_…` key instead.
 
 ## Funding modes
 
 - **BYOK** — upstream calls use the agency's sealed OpenAI/Anthropic keys.
-- **MANDATE_PROMO** — upstream calls use Mandate platform keys; one client; $5/week; expires in 7 days then hard-stops (`PROMO_TRIAL_ENDED`).
+- **MANDATE_PROMO** — upstream calls use Mandate platform keys; all promo clients share $5 total; each key expires in 7 days or stops when the shared pool is used.

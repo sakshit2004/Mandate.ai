@@ -7,7 +7,8 @@ All docs are Markdown:
 - Full guide: /docs/guide.md (rendered at /docs)
 - Index: /docs/index.md
 - Quickstart: /docs/quickstart.md
-- n8n: /docs/n8n.md
+- Universal setup: /docs/guide.md#universal-setup
+- n8n example: /docs/n8n.md
 - API: /docs/api.md
 - Errors: /docs/errors.md
 - Free credits: /docs/promo.md

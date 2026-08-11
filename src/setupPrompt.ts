@@ -1,4 +1,4 @@
-/** Shared copy for “setup with AI” — paste into Cursor / ChatGPT / Claude / n8n AI. */
+/** Shared tool-agnostic copy for “setup with AI”. */
 
 export function mandateBaseUrls(origin = typeof window !== 'undefined' ? window.location.origin : 'https://trymandate.dev') {
   return {
@@ -7,7 +7,7 @@ export function mandateBaseUrls(origin = typeof window !== 'undefined' ? window.
   }
 }
 
-export function buildN8nSetupPrompt(opts: {
+export function buildSetupPrompt(opts: {
   mandateKey: string
   clientName?: string
   origin?: string
@@ -17,12 +17,12 @@ export function buildN8nSetupPrompt(opts: {
     ? opts.mandateKey
     : `${opts.mandateKey} (paste the full mdt_live_… key you copied from Mandate)`
 
-  return `You are configuring an n8n workflow to send OpenAI/Anthropic traffic through Mandate (spend-control proxy).
+  return `Configure this AI application, agent, backend, SDK, or automation to send its OpenAI/Anthropic traffic through Mandate (a spend-control proxy).
 
 Client: ${opts.clientName || 'Mandate client'}
 
 Steps:
-1. In n8n, open (or create) the OpenAI or Anthropic credential used by this workflow.
+1. Identify where this project or tool configures its OpenAI or Anthropic client. It must support a custom base URL. If it does not, use its generic HTTP request integration.
 2. Set the API key to this Mandate client key (NOT the real OpenAI/Anthropic key):
    ${keyLine}
 3. Set the base URL to the matching Mandate endpoint:
@@ -36,5 +36,5 @@ Docs: ${opts.origin || (typeof window !== 'undefined' ? window.location.origin :
 Errors to expect:
 - 429 CLIENT_BUDGET_EXCEEDED — raise cap or wait for next period
 - 403 CLIENT_KEY_KILLED / PROMO_TRIAL_ENDED — re-enable in Mandate after fixing billing path
-Do not change the model name or request body shape beyond what the provider node already sends.`
+Preserve the existing model, request payload, retry behavior, and application logic. Only replace the provider base URL and API key. Explain the exact files or credential fields you changed.`
 }

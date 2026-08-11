@@ -68,7 +68,7 @@ const faqs = [
   {
     question: 'Which providers and tools work today?',
     answer:
-      'The MVP supports OpenAI and Anthropic through drop-in proxy endpoints, with n8n setup documentation and MCP as an alternate transport.',
+      'Mandate supports OpenAI and Anthropic from any backend, SDK, agent framework, automation tool, or HTTP client that lets you set a custom base URL. n8n is one example, not a requirement.',
   },
   {
     question: 'How does Mandate help with invoicing?',
@@ -80,6 +80,16 @@ const faqs = [
     answer:
       'No. Provider credentials are encrypted server-side. Workflows receive only the client-specific Mandate key you can cap or disable.',
   },
+  {
+    question: 'What are Mandate free credits?',
+    answer:
+      'On signup you can try Mandate without your own provider keys. Any number of promo clients across all agencies draw from one shared $5 pool. Each promo key lasts up to 7 days or until the pool is used. Prefer your own account from day one? Choose bring-your-own-keys on onboarding.',
+  },
+  {
+    question: 'Is Mandate only for n8n?',
+    answer:
+      'No. If your tool or backend accepts a custom OpenAI or Anthropic base URL, it can use Mandate. This includes official SDKs, LangChain, LlamaIndex, Make, HTTP clients, custom apps, and agent backends. Tools that hardcode the provider URL need an HTTP integration instead.',
+  },
 ]
 
 function Logo() {
@@ -90,9 +100,14 @@ function InviteForm({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`invite-form ${compact ? 'compact' : ''}`}>
       <a className="button" href="/sign-up">
-        create your free account
+        start with $5 free credits
         <ArrowRight size={14} />
       </a>
+      {!compact && (
+        <p className="invite-promo">
+          Or bring your own OpenAI / Anthropic keys. Mandate credits come from one shared $5 pool.
+        </p>
+      )}
     </div>
   )
 }
@@ -372,7 +387,7 @@ function App() {
               sign in
             </a>
             <a className="button button-small" href="/sign-up">
-              start free
+              try $5 free
             </a>
           </div>
         </nav>
@@ -387,18 +402,21 @@ function App() {
           </h1>
           <p className="hero-copy">
             You pay OpenAI and Anthropic from one account, then re-bill from a spreadsheet.
-            Give every client a capped Mandate key, change one base URL, and meter every call
-            without exposing your real provider credentials.
+            Give every client a capped Mandate key, change one base URL in any compatible tool or
+            backend, and meter every call without exposing your real provider credentials.
           </p>
           <InviteForm />
-          <p className="form-note">Open signup · no card required · invite your team</p>
+          <p className="form-note">
+            Open signup · no card · try with $5 Mandate credits or bring your own keys
+          </p>
           <DashboardPreview />
           <div className="integrations">
-            <span>LOCKED MVP CONNECTIONS</span>
+            <span>WORKS ANYWHERE THE BASE URL CAN CHANGE</span>
             <b>openai</b>
             <b>anthropic</b>
+            <b>SDKs</b>
+            <b>agents</b>
             <b>n8n</b>
-            <b>MCP</b>
           </div>
         </section>
 
@@ -453,7 +471,7 @@ function App() {
           <div className="audience-grid">
             <article>
               <span>AI AGENCY</span>
-              <h3>Meter every workflow, per client.</h3>
+              <h3>Meter every agent and workflow, per client.</h3>
               <p>One agency account, any number of clients, and a statement for every invoice.</p>
             </article>
             <article>
@@ -465,17 +483,20 @@ function App() {
 
           <div className="workflow">
             <p className="eyebrow left">HOW IT WORKS</p>
-            <h2>How every workflow, per client.</h2>
+            <h2>One setup pattern for every compatible tool.</h2>
             <div className="workflow-steps">
               <article>
                 <span>01</span>
-                <h3>Route</h3>
-                <p>Swap the provider base URL for its drop-in Mandate endpoint.</p>
+                <h3>Fund</h3>
+                <p>
+                  Bring your own OpenAI/Anthropic keys, or start with $5 Mandate credits for one
+                  client (7 days).
+                </p>
               </article>
               <article>
                 <span>02</span>
-                <h3>Key</h3>
-                <p>Use the capped Mandate key assigned to that client workflow.</p>
+                <h3>Route + key</h3>
+                <p>Swap the provider base URL, then use the capped Mandate key in your tool or backend.</p>
               </article>
               <article>
                 <span>03</span>
@@ -485,7 +506,7 @@ function App() {
             </div>
             <pre>
               <code>
-                {`# n8n OpenAI credential\nBase URL  https://trymandate.dev/openai/v1\nAPI key   mdt_live_harbor_••••\n\n# Anthropic: /anthropic/v1 · no workflow rewrite`}
+                {`# Any OpenAI-compatible SDK, agent, backend, or automation\nBase URL  https://trymandate.dev/openai/v1\nAPI key   mdt_live_harbor_••••\n\n# Anthropic: /anthropic/v1 · same payloads, same models`}
               </code>
             </pre>
           </div>
@@ -514,25 +535,25 @@ function App() {
         <section className="launch-section" id="setup">
           <div className="shell launch-grid">
             <div className="split-copy">
-              <p className="eyebrow left">N8N IN 30 SECONDS</p>
-              <h2>Change the URL. Keep the workflow.</h2>
+              <p className="eyebrow left">ONE CHANGE · ANY COMPATIBLE TOOL</p>
+              <h2>Change the URL. Keep your stack.</h2>
               <p>
-                The setup guide covers both provider routes, client credentials, streaming usage,
-                429 and 403 responses, and a one-call verification.
+                Use Mandate from SDKs, agent frameworks, custom backends, automation tools, or raw
+                HTTP. The guide covers both provider routes, credentials, errors, and verification.
               </p>
-              <a className="button guide-button" href="/docs#n8n-setup">
-                open n8n setup guide <ArrowRight size={14} />
+              <a className="button guide-button" href="/docs#universal-setup">
+                open setup guide <ArrowRight size={14} />
               </a>
             </div>
-            <div className="demo-player" aria-label="30-second n8n setup demo">
+            <div className="demo-player" aria-label="Base URL setup example using n8n">
               <div className="mini-window-bar">
-                <span><Play size={10} /> 30-second setup demo</span>
+                <span><Play size={10} /> n8n example</span>
                 <span>loops automatically</span>
               </div>
               <img
                 className="demo-gif"
                 src="/mandate-n8n-demo.gif"
-                alt="Four-step n8n setup: open the credential, change the base URL, add a client key, and verify metered spend."
+                alt="n8n example of the universal Mandate setup: change the base URL, add a client key, and verify metered spend."
               />
             </div>
           </div>
@@ -567,7 +588,10 @@ function App() {
           <div className="shell">
             <SquareTerminal size={22} />
             <h2>Stop finding out when the invoice hits.</h2>
-            <p>Create an agency workspace and invite your team in minutes.</p>
+            <p>
+              Create a workspace, try $5 Mandate credits for one client, or bring your own keys —
+              then invite your team.
+            </p>
             <InviteForm compact />
           </div>
         </section>

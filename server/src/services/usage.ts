@@ -190,7 +190,70 @@ export async function reserveClientBudget(input: {
   end: Date
   capUsd: number
   amountUsd: number
-}): Promise<boolean> {
+  fundingSource: 'BYOK' | 'MANDATE_PROMO'
+  sharedPromoCapUsd?: number
+}): Promise<'reserved' | 'client_budget_exceeded' | 'shared_promo_exhausted'> {
+  if (input.sharedPromoCapUsd != null) {
+    const now = new Date()
+    const requested = Math.max(0.000001, moneyUsd(input.amountUsd))
+    await prisma.budgetReservation.deleteMany({
+      where: {
+        expiresAt: { lte: now },
+        fundingSource: 'MANDATE_PROMO',
+      },
+    })
+
+    return prisma.$transaction(
+      async (tx) => {
+        // Serialize all promo reservations, then calculate and insert in one
+        // database round-trip. This keeps the lock hold short over remote DBs.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(1297040463)::text AS "lock"`
+        const result = await tx.$queryRaw<Array<{ reserved: boolean }>>`
+          WITH totals AS MATERIALIZED (
+            SELECT
+              COALESCE((
+                SELECT SUM("costUsd")
+                FROM "UsageEvent"
+                WHERE "fundingSource" = 'MANDATE_PROMO'::"FundingMode"
+                  AND "status" <> 'error'
+              ), 0)::double precision AS spent,
+              COALESCE((
+                SELECT SUM("amountUsd")
+                FROM "BudgetReservation"
+                WHERE "fundingSource" = 'MANDATE_PROMO'::"FundingMode"
+                  AND "expiresAt" > ${now}
+              ), 0)::double precision AS held
+          ),
+          inserted AS (
+            INSERT INTO "BudgetReservation" (
+              "id",
+              "clientId",
+              "fundingSource",
+              "budgetWindowId",
+              "amountUsd",
+              "expiresAt",
+              "createdAt"
+            )
+            SELECT
+              ${input.reservationId},
+              ${input.clientId},
+              'MANDATE_PROMO'::"FundingMode",
+              ${input.budgetWindowId},
+              ${requested},
+              ${new Date(now.getTime() + 5 * 60_000)},
+              ${now}
+            FROM totals
+            WHERE ${requested} <= ${input.sharedPromoCapUsd} - spent - held
+            RETURNING "id"
+          )
+          SELECT EXISTS(SELECT 1 FROM inserted) AS reserved
+        `
+        return result[0]?.reserved ? 'reserved' : 'shared_promo_exhausted'
+      },
+      { maxWait: 180_000, timeout: 180_000 },
+    )
+  }
+
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "Client" WHERE "id" = ${input.clientId} FOR UPDATE`
     const now = new Date()
@@ -219,18 +282,19 @@ export async function reserveClientBudget(input: {
     const reserved = moneyUsd(reservations._sum.amountUsd ?? 0)
     const remaining = moneyUsd(input.capUsd - spent - reserved)
     const requested = Math.max(0.0001, moneyUsd(input.amountUsd))
-    if (remaining < requested) return false
+    if (remaining < requested) return 'client_budget_exceeded'
 
     await tx.budgetReservation.create({
       data: {
         id: input.reservationId,
         clientId: input.clientId,
+        fundingSource: input.fundingSource,
         budgetWindowId: input.budgetWindowId,
         amountUsd: requested,
         expiresAt: new Date(now.getTime() + 5 * 60_000),
       },
     })
-    return true
+    return 'reserved'
   })
 }
 
@@ -242,6 +306,7 @@ export async function recordUsageEvent(input: {
   requestId: string
   reservationId?: string
   clientId: string
+  fundingSource: 'BYOK' | 'MANDATE_PROMO'
   provider: string
   model: string
   tokensIn: number
@@ -250,30 +315,35 @@ export async function recordUsageEvent(input: {
   status: string
   tag: string | null
 }): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    await tx.usageEvent.upsert({
-      where: { requestId: input.requestId },
-      create: {
-        requestId: input.requestId,
-        clientId: input.clientId,
-        provider: input.provider,
-        model: input.model,
-        tokensIn: input.tokensIn,
-        tokensOut: input.tokensOut,
-        costUsd: input.costUsd,
-        status: input.status,
-        tag: input.tag,
-      },
-      update: {
-        tokensIn: input.tokensIn,
-        tokensOut: input.tokensOut,
-        costUsd: input.costUsd,
-        status: input.status,
-        tag: input.tag,
-      },
-    })
-    if (input.reservationId) {
-      await tx.budgetReservation.deleteMany({ where: { id: input.reservationId } })
-    }
+  const usageUpsert = prisma.usageEvent.upsert({
+    where: { requestId: input.requestId },
+    create: {
+      requestId: input.requestId,
+      clientId: input.clientId,
+      fundingSource: input.fundingSource,
+      provider: input.provider,
+      model: input.model,
+      tokensIn: input.tokensIn,
+      tokensOut: input.tokensOut,
+      costUsd: input.costUsd,
+      status: input.status,
+      tag: input.tag,
+    },
+    update: {
+      fundingSource: input.fundingSource,
+      tokensIn: input.tokensIn,
+      tokensOut: input.tokensOut,
+      costUsd: input.costUsd,
+      status: input.status,
+      tag: input.tag,
+    },
   })
+  if (!input.reservationId) {
+    await usageUpsert
+    return
+  }
+  await prisma.$transaction([
+    usageUpsert,
+    prisma.budgetReservation.deleteMany({ where: { id: input.reservationId } }),
+  ])
 }
