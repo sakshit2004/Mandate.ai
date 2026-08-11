@@ -54,6 +54,39 @@ function formatLedgerTime(iso: string) {
   })
 }
 
+function CopyButton({
+  value,
+  label,
+  copiedLabel,
+}: {
+  value: string
+  label: string
+  copiedLabel: string
+}) {
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
+
+  useEffect(() => {
+    if (copyStatus === 'idle') return
+    const timeout = window.setTimeout(() => setCopyStatus('idle'), 2000)
+    return () => window.clearTimeout(timeout)
+  }, [copyStatus])
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopyStatus('copied')
+    } catch {
+      setCopyStatus('failed')
+    }
+  }
+
+  return (
+    <button type="button" className="button-ghost" onClick={copy} aria-live="polite">
+      {copyStatus === 'copied' ? copiedLabel : copyStatus === 'failed' ? 'copy failed' : label}
+    </button>
+  )
+}
+
 export function DashboardPage() {
   const { agency, loading, refresh } = useAgency()
   const navigate = useNavigate()
@@ -209,12 +242,8 @@ function KeyRevealPanel({ mandateKey, onDismiss, clientName }: { mandateKey: str
       <strong>Copy this Mandate key now — it won’t be shown again.</strong>
       <code>{mandateKey}</code>
       <div className="modal-actions" style={{ marginTop: 8 }}>
-        <button type="button" className="button-ghost" onClick={() => navigator.clipboard.writeText(mandateKey)}>
-          copy key
-        </button>
-        <button type="button" className="button-ghost" onClick={() => navigator.clipboard.writeText(prompt)}>
-          copy setup prompt
-        </button>
+        <CopyButton value={mandateKey} label="copy key" copiedLabel="key copied" />
+        <CopyButton value={prompt} label="copy setup prompt" copiedLabel="setup prompt copied" />
         <button type="button" className="button-ghost" onClick={onDismiss}>
           dismiss
         </button>
@@ -668,7 +697,6 @@ export function ClientDetailPage() {
   const [error, setError] = useState('')
   const [busyKill, setBusyKill] = useState(false)
   const [period, setPeriod] = useState<'current' | 'previous'>('current')
-  const [copiedPrompt, setCopiedPrompt] = useState(false)
 
   async function load() {
     if (!id) return
@@ -928,35 +956,9 @@ export function ClientDetailPage() {
 Anthropic  ${urls.anthropic}
 API key    ${row.keyPrefix}…  (paste full mdt_live_… key)`}</pre>
               <div className="modal-actions" style={{ marginTop: 12 }}>
-                <button
-                  type="button"
-                  className="button-ghost"
-                  onClick={() => {
-                    navigator.clipboard.writeText(urls.openai)
-                  }}
-                >
-                  copy OpenAI URL
-                </button>
-                <button
-                  type="button"
-                  className="button-ghost"
-                  onClick={() => {
-                    navigator.clipboard.writeText(urls.anthropic)
-                  }}
-                >
-                  copy Anthropic URL
-                </button>
-                <button
-                  type="button"
-                  className="button-ghost"
-                  onClick={() => {
-                    navigator.clipboard.writeText(setupPrompt)
-                    setCopiedPrompt(true)
-                    setTimeout(() => setCopiedPrompt(false), 2000)
-                  }}
-                >
-                  {copiedPrompt ? 'copied!' : 'copy setup prompt'}
-                </button>
+                <CopyButton value={urls.openai} label="copy OpenAI URL" copiedLabel="OpenAI URL copied" />
+                <CopyButton value={urls.anthropic} label="copy Anthropic URL" copiedLabel="Anthropic URL copied" />
+                <CopyButton value={setupPrompt} label="copy setup prompt" copiedLabel="setup prompt copied" />
                 <Link className="button-ghost" to="/docs">
                   docs
                 </Link>
